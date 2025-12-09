@@ -327,8 +327,8 @@ else
   echo "[MERGE] Rodando bcftools merge COMPLETO para cromossomo $CHR (sem -R)"
   bcftools merge -Oz --threads "$THREADS" -m none \
     --file-list "$MERGE_DIR/merge.list" \
-    -r "$CHR" \
     -o "$OUT_VCF"
+
 fi
 
 tabix -f -p vcf "$OUT_VCF"
