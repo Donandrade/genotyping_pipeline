@@ -1,8 +1,8 @@
-old_pileups/merged.VaccDscaff11_27652190_27662189.all.vcf.gz
-old_pileups/merged.VaccDscaff12_6795405_6805404.all.vcf.gz
-old_pileups/merged.VaccDscaff13_8612145_8622144.all.vcf.gz
-old_pileups/merged.VaccDscaff1_42640288_42650287.all.vcf.gz
-old_pileups/merged.VaccDscaff2_28801683_28811682.all.vcf.gz
-old_pileups/merged.VaccDscaff4_21204352_21214351.all.vcf.gz
-old_pileups/merged.VaccDscaff6_11534481_11544480.all.vcf.gz
-old_pileups/merged.VaccDscaff7_3282650_3292649.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff11_27652190_27662189.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff12_6795405_6805404.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff13_8612145_8622144.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff1_42640288_42650287.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff2_28801683_28811682.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff4_21204352_21214351.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff6_11534481_11544480.all.vcf.gz
+../reads/out/merge/all/merged.VaccDscaff7_3282650_3292649.all.vcf.gz
