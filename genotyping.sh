@@ -218,23 +218,19 @@ while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
   echo "  R2: $r2"
 
   # 1) Trim
-  # trim_pair "$sample" "$r1" "$r2"
+  trim_pair "$sample" "$r1" "$r2"
   # 2) Alinhamento + sort
-  # align_bwa "$sample"
+  align_bwa "$sample"
   # 3) QC
-  # qc_bam "$sample"
+  qc_bam "$sample"
   # 4) Variants
-  # call_variants "$sample"
+  call_variants "$sample"
   # 5) mover BAM final e limpar intermediários
-  # finalize_sample "$sample"
+  finalize_sample "$sample"
 
 done <<< "$SRC_STREAM"
 
 echo "Task $SLURM_ARRAY_TASK_ID (amostras) completed."
-
-########################################
-# MERGE POR CROMOSSOMO USANDO PROBES  #
-########################################
 
 ########################################
 # MERGE POR CROMOSSOMO USANDO PROBES  #
