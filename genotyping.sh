@@ -27,8 +27,8 @@ module load picard/3.2.0
 # ===== CONFIG =====
 
 # PROBES (BED) para restringir o merge
-# PROBES="simulated_probes.bed"
-PROBES=""
+PROBES="probes.bed"
+# PROBES=""
 
 # samples.tsv com header: sample_id  r1  r2  [rgid rglb rgpl rgpu]
 SAMPLES_TSV="samples.tsv"
@@ -211,26 +211,26 @@ else
 fi
 
 # processa o bloco selecionado de amostras (por enquanto tudo comentado)
-# while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
-  # [[ -z "${sample:-}" || -z "${r1:-}" || -z "${r2:-}" ]] && { echo "Linha malformada no TSV"; exit 1; }
-  # [[ -f "$r1" && -f "$r2" ]] || { echo "Arquivos ausentes: $r1 / $r2"; exit 2; }
+while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
+  [[ -z "${sample:-}" || -z "${r1:-}" || -z "${r2:-}" ]] && { echo "Linha malformada no TSV"; exit 1; }
+  [[ -f "$r1" && -f "$r2" ]] || { echo "Arquivos ausentes: $r1 / $r2"; exit 2; }
 
-  # echo "[$SLURM_ARRAY_TASK_ID] sample=$sample"
-  # echo "  R1: $r1"
-  # echo "  R2: $r2"
+  echo "[$SLURM_ARRAY_TASK_ID] sample=$sample"
+  echo "  R1: $r1"
+  echo "  R2: $r2"
 
   # 1) Trim
-  # trim_pair "$sample" "$r1" "$r2"
+  trim_pair "$sample" "$r1" "$r2"
   # 2) Alinhamento + sort
-  # align_bwa "$sample"
+  align_bwa "$sample"
   # 3) QC
-  # qc_bam "$sample"
+  qc_bam "$sample"
   # 4) Variants
-  # call_variants "$sample"
+  call_variants "$sample"
   # 5) mover BAM final e limpar intermediários
-  # finalize_sample "$sample"
+  finalize_sample "$sample"
 
-# done <<< "$SRC_STREAM"
+done <<< "$SRC_STREAM"
 
 echo "Task $SLURM_ARRAY_TASK_ID (amostras) completed."
 
