@@ -54,6 +54,8 @@ TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"
 # ---- pileup/merge ----
 PILEUP_DIR="out/pileup"
 MERGE_DIR="out/merge"
+# Directory for the splited VCF pileups by cromossome
+SPLIT_DIR="${PILEUP_DIR}/split_chr"
 
 USE_PREV_PILEUPS=true   # <- se true, inclui pileups listados em PILEUP_TSV
 
@@ -76,7 +78,7 @@ CHR_LIST=(
   "VaccDscaff22:28175518-28185517"
 )
 
-mkdir -p "$PILEUP_DIR" "$MERGE_DIR"
+mkdir -p "$PILEUP_DIR" "$MERGE_DIR" "$SPLIT_DIR"
 mkdir -p "$OUTDIR" "$BAM_TMP_DIR" "$BAM_FINAL_DIR"
 
 # ===== detectar header e calcular fatia =====
@@ -209,26 +211,26 @@ else
 fi
 
 # processa o bloco selecionado de amostras (por enquanto tudo comentado)
-while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
-  [[ -z "${sample:-}" || -z "${r1:-}" || -z "${r2:-}" ]] && { echo "Linha malformada no TSV"; exit 1; }
-  [[ -f "$r1" && -f "$r2" ]] || { echo "Arquivos ausentes: $r1 / $r2"; exit 2; }
+# while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
+  # [[ -z "${sample:-}" || -z "${r1:-}" || -z "${r2:-}" ]] && { echo "Linha malformada no TSV"; exit 1; }
+  # [[ -f "$r1" && -f "$r2" ]] || { echo "Arquivos ausentes: $r1 / $r2"; exit 2; }
 
-  echo "[$SLURM_ARRAY_TASK_ID] sample=$sample"
-  echo "  R1: $r1"
-  echo "  R2: $r2"
+  # echo "[$SLURM_ARRAY_TASK_ID] sample=$sample"
+  # echo "  R1: $r1"
+  # echo "  R2: $r2"
 
   # 1) Trim
-  trim_pair "$sample" "$r1" "$r2"
+  # trim_pair "$sample" "$r1" "$r2"
   # 2) Alinhamento + sort
-  align_bwa "$sample"
+  # align_bwa "$sample"
   # 3) QC
-  qc_bam "$sample"
+  # qc_bam "$sample"
   # 4) Variants
-  call_variants "$sample"
+  # call_variants "$sample"
   # 5) mover BAM final e limpar intermediários
-  finalize_sample "$sample"
+  # finalize_sample "$sample"
 
-done <<< "$SRC_STREAM"
+# done <<< "$SRC_STREAM"
 
 echo "Task $SLURM_ARRAY_TASK_ID (amostras) completed."
 
@@ -238,7 +240,7 @@ echo "Task $SLURM_ARRAY_TASK_ID (amostras) completed."
 
 echo "[MERGE] Task $SLURM_ARRAY_TASK_ID iniciando merge por cromossomo + probes"
 
-# mapeia ID da array -> cromossomo
+# mapeia ID da array -> cromossomo (região)
 CHR_INDEX=$((SLURM_ARRAY_TASK_ID - 1))
 CHR="${CHR_LIST[$CHR_INDEX]}"
 
@@ -247,54 +249,104 @@ if [[ -z "${CHR:-}" ]]; then
   exit 1
 fi
 
-echo "[MERGE] Cromossomo desta task: $CHR"
+echo "[MERGE] Cromossomo/região desta task: $CHR"
 
-# coleta TODOS os pileups disponíveis
-echo "[MERGE] Coletando pileups em $PILEUP_DIR..."
+# forma segura para usar CHR em nomes de arquivos
+SAFE_CHR=${CHR//[:\-]/_}
+
+########################################
+# 1) SPLITAR CURRENT PILEUPS POR CHR   #
+########################################
+
+echo "[MERGE] Coletando CURRENT pileups em $PILEUP_DIR..."
 mapfile -t NOW_PILEUPS < <(find "$PILEUP_DIR" -maxdepth 1 -type f -name "*_sorted_norm_split.vcf.gz" | sort)
-echo "[MERGE] Pileups atuais:"
-printf '  %s\n' "${NOW_PILEUPS[@]}"
 
-EXTRA_PILEUPS=()
+if (( ${#NOW_PILEUPS[@]} == 0 )); then
+  echo "[MERGE][WARN] Nenhum current pileup encontrado em $PILEUP_DIR"
+fi
+
+CURR_CHR_PILEUPS=()
+
+for f in "${NOW_PILEUPS[@]}"; do
+  base=$(basename "$f" .vcf.gz)   # ex: sampleX_sorted_norm_split
+  split_vcf="$SPLIT_DIR/${base}.${SAFE_CHR}.vcf.gz"
+
+  if [[ -s "$split_vcf" ]]; then
+    echo "[MERGE][SPLIT] SKIP (já existe): $split_vcf"
+  else
+    echo "[MERGE][SPLIT] Gerando split para $CHR a partir de $f -> $split_vcf"
+    # bcftools view -r "$CHR" -Oz -o "$split_vcf" "$f"
+    bcftools view \
+      -i "CHROM==\"$CHR\"" \
+      -Oz -o "$split_vcf" "$f"
+  fi
+
+  # garante índice
+  [[ -s "${split_vcf}.tbi" ]] || tabix -f -p vcf "$split_vcf"
+
+  CURR_CHR_PILEUPS+=("$split_vcf")
+done
+
+echo "[MERGE] N de CURRENT pileups splitados para $CHR: ${#CURR_CHR_PILEUPS[@]}"
+
+########################################
+# 2) SELECIONAR PREVIOUS PILEUPS DO CHR
+########################################
+
+PREV_CHR_PILEUPS=()
+
 if [[ "$USE_PREV_PILEUPS" == true ]]; then
   if [[ -f "$PILEUP_TSV" ]]; then
+    echo "[MERGE] Lendo previous pileups de $PILEUP_TSV..."
     while IFS=$'\t' read -r p; do
-      [[ -n "$p" ]] && EXTRA_PILEUPS+=("$p")
+      # pulo linhas vazias ou comentários
+      [[ -z "$p" || "$p" =~ ^# ]] && continue
+
+      # heurística: pega apenas arquivos que parecem ser deste cromossomo/região
+      if [[ "$p" == *"$SAFE_CHR"* || "$p" == *"$CHR"* ]]; then
+        PREV_CHR_PILEUPS+=("$p")
+      fi
     done < "$PILEUP_TSV"
   else
     echo "[MERGE][WARN] USE_PREV_PILEUPS=true mas PILEUP_TSV não existe: $PILEUP_TSV"
   fi
 fi
 
-ALL_PILEUPS=("${NOW_PILEUPS[@]}" "${EXTRA_PILEUPS[@]}")
+echo "[MERGE] N de PREVIOUS pileups para $CHR: ${#PREV_CHR_PILEUPS[@]}"
 
-if (( ${#ALL_PILEUPS[@]} == 0 )); then
-  echo "[MERGE][ERROR] Nenhum *_sorted_norm_split.vcf.gz encontrado."
+########################################
+# 3) JUNTAR LISTAS E CHECAR            #
+########################################
+
+ALL_PILEUPS_CHR=("${CURR_CHR_PILEUPS[@]}" "${PREV_CHR_PILEUPS[@]}")
+
+if (( ${#ALL_PILEUPS_CHR[@]} == 0 )); then
+  echo "[MERGE][ERROR] Nenhum VCF (current ou previous) encontrado para $CHR."
   exit 20
 fi
 
-# garante índices .tbi
-for f in "${ALL_PILEUPS[@]}"; do
+# garante índices para todos
+for f in "${ALL_PILEUPS_CHR[@]}"; do
   [[ -s "${f}.tbi" ]] || tabix -f -p vcf "$f"
 done
 
-printf '%s\n' "${ALL_PILEUPS[@]}" > "$MERGE_DIR/merge.list"
-echo "[MERGE] N de arquivos na merge.list: ${#ALL_PILEUPS[@]}"
-
-SAFE_CHR=${CHR//[:\-]/_}
+MERGE_LIST_CHR="$MERGE_DIR/merge.${SAFE_CHR}.list"
+printf '%s\n' "${ALL_PILEUPS_CHR[@]}" > "$MERGE_LIST_CHR"
+echo "[MERGE] Arquivos incluídos em $MERGE_LIST_CHR:"
+printf '  %s\n' "${ALL_PILEUPS_CHR[@]}"
 
 ########################################
-# LÓGICA: USAR PROBES SE POSSÍVEL      #
-# CASO CONTRÁRIO, MERGE COMPLETO      #
+# 4) DEFINIR SE USA PROBES OU ALL      #
 ########################################
 
 OUT_VCF=""
 USE_PROBES=false
 
-# 1) Verifica se o arquivo de probes existe e tem conteúdo
 if [[ -s "$PROBES" ]]; then
   CHR_PROBES_BED="$MERGE_DIR/probes.${SAFE_CHR}.bed"
-  echo "[MERGE] Gerando BED de probes para cromossomo $CHR -> $CHR_PROBES_BED"
+  echo "[MERGE] Gerando BED de probes para $CHR -> $CHR_PROBES_BED"
+
+  # Espera-se que primeira coluna do BED seja o mesmo nome/região que usamos em CHR
   awk -v c="$CHR" 'BEGIN{OFS="\t"} $1 == c {print}' "$PROBES" > "$CHR_PROBES_BED"
 
   if [[ -s "$CHR_PROBES_BED" ]]; then
@@ -303,32 +355,34 @@ if [[ -s "$PROBES" ]]; then
     OUT_VCF="$MERGE_DIR/merged.${SAFE_CHR}.probes.vcf.gz"
   else
     echo "[MERGE][WARN] Nenhuma probe encontrada para $CHR em $PROBES."
-    echo "[MERGE] Merge será feito com TODO o conteúdo do cromossomo (sem -R)."
+    echo "[MERGE] Merge será feito com TODO o conteúdo de $CHR (sem -R)."
     OUT_VCF="$MERGE_DIR/merged.${SAFE_CHR}.all.vcf.gz"
   fi
 else
   echo "[MERGE][WARN] Arquivo de probes inexistente ou vazio: $PROBES"
-  echo "[MERGE] Merge será feito com TODO o conteúdo do cromossomo (sem -R)."
+  echo "[MERGE] Merge será feito com TODO o conteúdo de $CHR (sem -R)."
   OUT_VCF="$MERGE_DIR/merged.${SAFE_CHR}.all.vcf.gz"
 fi
 
 ########################################
-# CHAMADA DO BCFTOOLS MERGE           #
+# 5) RODAR BCFTOOLS MERGE              #
 ########################################
 
 if [[ "$USE_PROBES" == true ]]; then
   echo "[MERGE] Rodando bcftools merge para $CHR usando probes em $CHR_PROBES_BED"
   bcftools merge -Oz --threads "$THREADS" -m none \
-    --file-list "$MERGE_DIR/merge.list" \
+    --file-list "$MERGE_LIST_CHR" \
     -R "$CHR_PROBES_BED" \
     -o "$OUT_VCF"
 else
-  # Aqui faço merge completo, mas restringindo ao cromossomo (se os VCFs tiverem todos os cromossomos)
-  echo "[MERGE] Rodando bcftools merge COMPLETO para cromossomo $CHR (sem -R)"
-  bcftools merge -Oz --threads "$THREADS" -m none \
-    --file-list "$MERGE_DIR/merge.list" \
-    -o "$OUT_VCF"
-
+  echo "[MERGE] Rodando bcftools merge COMPLETO para região $CHR (sem -R, mas com -r)"
+  # bcftools merge -Oz --threads "$THREADS" -m none \
+    # --file-list "$MERGE_LIST_CHR" \
+    # -r "$CHR" \
+    # -o "$OUT_VCF"
+    bcftools merge -Oz --threads "$THREADS" -m none \
+      --file-list "$MERGE_LIST_CHR" \
+      -o "$OUT_VCF"
 fi
 
 tabix -f -p vcf "$OUT_VCF"
