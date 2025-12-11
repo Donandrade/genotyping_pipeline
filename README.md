@@ -12,10 +12,7 @@ It is designed for execution as a SLURM array job but can be adapted for other e
 ---
 ## Required Configuration Before Running the Pipeline  
 
-This pipeline requires several input files, directory paths, and configuration variables to be correctly set before execution. Open the ```bash
-genotyping.sh
-```
-file and make the changes according your needs
+This pipeline requires several input files, directory paths, and configuration variables to be correctly set before execution. Open the `genotyping.sh` file and make the changes according your needs
 
 Below is a summary of everything the user must prepare. 
 
