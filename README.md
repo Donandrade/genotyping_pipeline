@@ -27,8 +27,11 @@ git clone https://github.com/Donandrade/genotyping_pipeline.git
 
 ### **Probes file (optional)**
 
+
+The file `probes.bed` already follows the required format for probe regions. If you have your own probes file, include its path in the `genotyping.sh` script as shown below:
+
 ```bash
-PROBES="probes.bed" 
+PROBES="./probes.bed" 
 ```
 
 If the file exists and is non-empty, the pipeline will:
@@ -45,8 +48,18 @@ PROBES=""
 
 ### **Sample table**
 
+The file `samples.tsv` already follows the required format to define sample name and corresponding path for the R1 and R2 FASTQ files. Include its path in the `genotyping.sh` script as shown below:
+
 ```bash
-SAMPLE_TSV
+SAMPLE_TSV='path/to/samples.tsv'
+```
+
+### **chrom_size.txt**
+
+A file containing chromosome names and lengths, separated by `\t`, is required. Create this file and reference it in `genotyping.sh` as shown below:
+
+```bash
+SAMPLE_TSV='path/to/samples.tsv'
 ```
 
 ---
