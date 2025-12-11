@@ -16,9 +16,16 @@ This pipeline requires several input files, directory paths, and configuration v
 
 Below is a summary of everything the user must prepare. 
 
-### Required Input Files and Paths
 
-#### **Probes file (optional)**
+## Getting started
+
+```bash
+git clone https://github.com/Donandrade/genotyping_pipeline.git
+```
+
+## Required Input Files and Paths
+
+### **Probes file (optional)**
 
 ```bash
 PROBES="probes.bed" 
