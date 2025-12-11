@@ -69,7 +69,7 @@ VaccDscaff2   37844821
 
 - `SAMPLES_TSV="samples.tsv"`
 - `PROBES="" #Provide a probes file to restrict bcftools mpileup and bcftools merge to probe regions only`
-- `CHROM_SIZE_TSV="chrom_size.tsv"`
+- `CHROM_SIZE="chrom_size.txt"`
 - `REFERENCE="reference/subgenome_blue.multi.fa"`
 
 ### Configuring the Array and `PER_TASK`
