@@ -28,7 +28,8 @@ module load picard/3.2.0
 
 # PROBES (BED) used to:
 #   - restrict bcftools mpileup (-T) when set and non-empty
-#   - restrict bcftools merge per chromosome in the merge step
+#   - restrict bcctools merge per chromosome in the merge step
+
 PROBES="probes.bed"
 # PROBES=""   # <- if unset/empty or non-existent, pipeline runs genome-wide
 
@@ -42,9 +43,10 @@ OUTDIR="./out"
 BAM_TMP_DIR="out/bam_tmp"
 BAM_FINAL_DIR="out/bam"
 
-# Reports directory (read counts, flagstat summaries, etc.)
+# Reports directory (read counts, flagstat summaries, timing, etc.)
 REPORT_DIR="reports"
 mkdir -p "$REPORT_DIR"
+
 
 # Read-count report
 READCOUNT_TSV="$REPORT_DIR/read_counts.tsv"
@@ -56,6 +58,17 @@ fi
 FLAGSTAT_TSV="$REPORT_DIR/flagstat_summary.tsv"
 if [[ ! -s "$FLAGSTAT_TSV" ]]; then
   echo -e "sample\ttotal_reads\tmapped_percent\tpaired_in_sequencing\tproperly_paired_percent" > "$FLAGSTAT_TSV"
+fi
+
+# Timing reports
+TIMING_SAMPLE_TSV="$REPORT_DIR/timing_samples.tsv"
+if [[ ! -s "$TIMING_SAMPLE_TSV" ]]; then
+  echo -e "scope\tid\tstep\tseconds\tstart_epoch\tend_epoch\ttask_id\thost" > "$TIMING_SAMPLE_TSV"
+fi
+
+TIMING_MERGE_TSV="$REPORT_DIR/timing_merge.tsv"
+if [[ ! -s "$TIMING_MERGE_TSV" ]]; then
+  echo -e "scope\tid\tstep\tseconds\tstart_epoch\tend_epoch\ttask_id\thost" > "$TIMING_MERGE_TSV"
 fi
 
 # Reference genome
@@ -100,6 +113,21 @@ CHR_LIST=(
 mkdir -p "$PILEUP_DIR" "$MERGE_DIR" "$SPLIT_DIR"
 mkdir -p "$OUTDIR" "$BAM_TMP_DIR" "$BAM_FINAL_DIR"
 
+
+# -------------------------------------
+# ----- Config to count variant -------
+
+# Expected format: CHROM <tab> SIZE
+SCAFFOLD_SIZE_TSV="scaffold_size.txt"
+
+# SNP summary table (mpileup vs call)
+SNP_TABLE_TSV="$REPORT_DIR/table_snps_count_last_by_scaffold.tsv"
+if [[ ! -s "$SNP_TABLE_TSV" ]]; then
+    echo -e "mode\tchrom\tlen_info\tlast_pos\tn_snps" > "$SNP_TABLE_TSV"
+fi
+
+
+
 # ===== detect header and compute slice for this array task =====
 if head -n1 "$SAMPLES_TSV" | grep -q $'\tr1\t'; then
   HAS_HEADER=1
@@ -130,6 +158,22 @@ fi
 ##### ==============================
 ##### ========== FUNCTIONS =========
 ##### ==============================
+
+# Helper para registrar timings
+log_timing() {
+  local scope="$1"   # ex: sample / merge
+  local id="$2"      # ex: sample_id ou CHR
+  local step="$3"    # ex: trim_pair, align_bwa, merge_chr
+  local start_sec="$4"
+  local end_sec="$5"
+  local outfile="$6"
+
+  local dur=$(( end_sec - start_sec ))
+  local host
+  host=$(hostname)
+
+  echo -e "${scope}\t${id}\t${step}\t${dur}\t${start_sec}\t${end_sec}\t${SLURM_ARRAY_TASK_ID:-NA}\t${host}" >> "$outfile"
+}
 
 # Count the number of reads in a FASTQ (gzipped or plain)
 count_fastq_reads () {
@@ -311,6 +355,85 @@ finalize_sample () {
   rm -f "$BAM_TMP_DIR/${sample}.sorted.bam" "$BAM_TMP_DIR/${sample}.sorted.bam.bai" 2>/dev/null || true
 }
 
+
+
+# -------------------------------------------------------------------------
+# Run bcftools call on a per-chromosome merged pileup,
+# count variants before/after, and log summary statistics.
+# -------------------------------------------------------------------------
+call_bcftools_per_chr () {
+    local chr="$1"         # chromosome/region name, e.g., VaccDscaff1:...
+    local safe_chr="$2"    # sanitized string for filenames
+    local in_vcf="$3"      # merged pileup VCF input
+    local out_vcf="$4"     # bcftools call output
+
+    echo "[CALL] Calling genotypes (bcftools call) for $chr"
+    bcftools call -mv -Oz -o "$out_vcf" "$in_vcf"
+    tabix -f -p vcf "$out_vcf"
+
+    # ----------------------------------------------------
+    # Variant counting (mpileup-style vs called genotypes)
+    # ----------------------------------------------------
+    echo "[COUNT] Number of variants (merged mpileup) for $chr:"
+    bcftools view -H "$in_vcf" | wc -l
+
+    echo "[COUNT] Number of variants after bcftools call for $chr:"
+    bcftools view -H "$out_vcf" | wc -l
+
+    # ----------------------------------------------------
+    # SNP summary table (if scaffold_size.txt is available)
+    # ----------------------------------------------------
+    if [[ -f "$SCAFFOLD_SIZE_TSV" ]]; then
+        local tmp_snps="$REPORT_DIR/snp_list_${safe_chr}.txt"
+
+        # ---------- mpileup summary ----------
+        bcftools query -f '%CHROM\t%POS\n' "$in_vcf" > "$tmp_snps"
+
+        local len_info_mp
+        len_info_mp=$(grep -m1 "$chr" "$SCAFFOLD_SIZE_TSV" || echo -e "$chr\tNA")
+
+        local last_pos_mp
+        last_pos_mp=$(tail -n 1 "$tmp_snps" 2>/dev/null || echo -e "$chr\t0")
+
+        local n_snps_mp
+        n_snps_mp=$(wc -l < "$tmp_snps")
+
+        paste \
+            <(echo "mpileup") \
+            <(echo "$len_info_mp") \
+            <(echo "$last_pos_mp") \
+            <(echo "$n_snps_mp") >> "$SNP_TABLE_TSV"
+
+        # ---------- call summary ----------
+        bcftools query -f '%CHROM\t%POS\n' "$out_vcf" > "$tmp_snps"
+
+        local len_info_call
+        len_info_call=$(grep -m1 "$chr" "$SCAFFOLD_SIZE_TSV" || echo -e "$chr\tNA")
+
+        local last_pos_call
+        last_pos_call=$(tail -n 1 "$tmp_snps" 2>/dev/null || echo -e "$chr\t0")
+
+        local n_snps_call
+        n_snps_call=$(wc -l < "$tmp_snps")
+
+        paste \
+            <(echo "call") \
+            <(echo "$len_info_call") \
+            <(echo "$last_pos_call") \
+            <(echo "$n_snps_call") >> "$SNP_TABLE_TSV"
+
+        rm -f "$tmp_snps"
+
+    else
+        echo "[WARN] No scaffold_size.txt found; skipping SNP summary table for $chr."
+    fi
+}
+
+
+
+
+
+
 # ===== read TSV (skip header if present) =====
 SRC_STREAM=""
 if (( HAS_HEADER )); then
@@ -329,15 +452,34 @@ while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
   echo "  R2: $r2"
 
   # 1) Trim reads + record read counts
+  t_start=$(date +%s)
   trim_pair "$sample" "$r1" "$r2"
+  t_end=$(date +%s)
+  log_timing "sample" "$sample" "trim_pair" "$t_start" "$t_end" "$TIMING_SAMPLE_TSV"
+
   # 2) Alignment + sorting
+  t_start=$(date +%s)
   align_bwa "$sample"
+  t_end=$(date +%s)
+  log_timing "sample" "$sample" "align_bwa" "$t_start" "$t_end" "$TIMING_SAMPLE_TSV"
+
   # 3) QC (including flagstat summary)
+  t_start=$(date +%s)
   qc_bam "$sample"
+  t_end=$(date +%s)
+  log_timing "sample" "$sample" "qc_bam" "$t_start" "$t_end" "$TIMING_SAMPLE_TSV"
+
   # 4) Variant calling (with optional probes restriction)
+  t_start=$(date +%s)
   call_variants "$sample"
+  t_end=$(date +%s)
+  log_timing "sample" "$sample" "call_variants" "$t_start" "$t_end" "$TIMING_SAMPLE_TSV"
+
   # 5) Move final BAM and clean intermediates
+  t_start=$(date +%s)
   finalize_sample "$sample"
+  t_end=$(date +%s)
+  log_timing "sample" "$sample" "finalize_sample" "$t_start" "$t_end" "$TIMING_SAMPLE_TSV"
 
 done <<< "$SRC_STREAM"
 
@@ -348,6 +490,7 @@ echo "Task $SLURM_ARRAY_TASK_ID (sample processing) completed."
 ########################################
 
 echo "[MERGE] Task $SLURM_ARRAY_TASK_ID starting per-chromosome merge + probe filtering"
+merge_start=$(date +%s)
 
 # Map array ID to chromosome/region
 CHR_INDEX=$((SLURM_ARRAY_TASK_ID - 1))
@@ -497,8 +640,26 @@ else
     -o "$OUT_VCF"
 fi
 
+
 tabix -f -p vcf "$OUT_VCF"
 
+merge_end=$(date +%s)
+log_timing "merge" "$CHR" "merge_chr" "$merge_start" "$merge_end" "$TIMING_MERGE_TSV"
+
+# ---------------------------------------------------
+# Run bcftools call on the merged per-chromosome VCF
+# ---------------------------------------------------
+call_start=$(date +%s)
+
+CALLED_VCF="$MERGE_DIR/merged.${SAFE_CHR}.called.vcf.gz"
+call_bcftools_per_chr "$CHR" "$SAFE_CHR" "$OUT_VCF" "$CALLED_VCF"
+
+call_end=$(date +%s)
+log_timing "merge" "$CHR" "bcftools_call_chr" "$call_start" "$call_end" "$TIMING_MERGE_TSV"
+
 echo "[MERGE] Done -> $OUT_VCF"
+echo "[CALL]  Done -> $CALLED_VCF"
 date
+
+
 
