@@ -55,7 +55,8 @@ Located in `reports/`:
 
 ## Directory Structure Created Automatically
 
-ut/
+```bash
+out/
 ├── bam/
 │ ├── <sample>.sorted.group.bam
 │ └── <sample>.sorted.group.bam.bai
@@ -80,3 +81,4 @@ ut/
 ├── merged.<CHR>.called.vcf.gz
 └── *.tbi
 
+```
