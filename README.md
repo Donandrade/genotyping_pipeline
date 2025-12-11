@@ -51,8 +51,10 @@ sample002   fastq/sample002_R1.fq.gz    fastq/sample002_R2.fq.gz
 - `probes.bed (optional)`
 
 ```bash
-VaccDscaff1   10000   10500
-VaccDscaff1   20800   21500
+VaccDscaff1	0	300	VaccDscaff1_probe001
+VaccDscaff1	1000	1300	VaccDscaff1_probe002
+VaccDscaff1	2000	2300	VaccDscaff1_probe003
+VaccDscaff1	3000	3300	VaccDscaff1_probe004
 ```
 
 - `chrom_size.tsv`
