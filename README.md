@@ -17,7 +17,7 @@ Below is a summary of everything the user must prepare.
 
 ### Required Input Files and Paths
 
-#### **1.1 Probes file (optional)**
+#### ** Probes file (optional)**
 
 ```bash
 PROBES="probes.bed" 
