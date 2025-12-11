@@ -21,10 +21,13 @@ Below is a summary of everything the user must prepare.
 ```bash
 PROBES="probes.bed" 
 ```
-- If the file exists and is non-empty, the pipeline will:
--- restrict bcftools mpileup to probe regions
--- restrict per-chromosome merges to probe intervals
--- If you do not want probe filtering:
+If the file exists and is non-empty, the pipeline will:
+
+- restrict bcftools mpileup to probe regions
+
+- restrict per-chromosome merges to probe intervals
+
+- If you do not want probe filtering:
 
 
 ---
