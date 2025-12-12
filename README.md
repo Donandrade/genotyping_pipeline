@@ -74,33 +74,6 @@ fastq/
 
 ## 5. Configuration in `genotyping.sh`
 
-- `SAMPLES_TSV="samples.tsv"`
-- `PROBES="" #Provide a probes file to restrict bcftools mpileup and bcftools merge to probe regions only`
-- `CHROM_SIZE="chrom_size.txt"`
-- `REFERENCE="reference/subgenome_blue.multi.fa"`
-- `CHR_LIST=("VaccDscaff1:42640288-42650287"
-  "VaccDscaff2:28801683-28811682"
-  "VaccDscaff4:21204352-21214351"
-  "VaccDscaff6:11534481-11544480"
-  "VaccDscaff7:3282650-3292649"
-  "VaccDscaff11:27652190-27662189"
-  "VaccDscaff12:6795405-6805404"
-  "VaccDscaff13:8612145-8622144"
-  "VaccDscaff17:2834352-2844351"
-  "VaccDscaff20:13144615-13154614"
-  "VaccDscaff21:7405786-7415785"
-  "VaccDscaff22:28175518-28185517"
-)`
-- `ADAPTER_PE="${HPC_TRIMMOMATIC_ADAPTER}/TruSeq3-PE.fa"`
-- `TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"`
-- `USE_PREV_PILEUPS=true`
-- `PILEUP_TSV="old_pileup.list"`
-
-
-
-
-## 5. Configuration in `genotyping.sh`
-
 - `SAMPLES_TSV="samples.tsv"`  
   Path to the sample table. This TSV file must contain the sample ID and the paths to the R1 and R2 FASTQ files for each sample.
 
@@ -114,8 +87,7 @@ fastq/
 - `REFERENCE="reference/subgenome_blue.multi.fa"`  
   Path to the reference genome FASTA file used for alignment and mpileup. Make sure the required index files (e.g. BWA and `.fai`) are available.
 
-- ```bash
-  CHR_LIST=("VaccDscaff1:42640288-42650287"
+- `CHR_LIST=("VaccDscaff1:42640288-42650287"
     "VaccDscaff2:28801683-28811682"
     "VaccDscaff4:21204352-21214351"
     "VaccDscaff6:11534481-11544480"
@@ -127,8 +99,7 @@ fastq/
     "VaccDscaff20:13144615-13154614"
     "VaccDscaff21:7405786-7415785"
     "VaccDscaff22:28175518-28185517"
-  )
-
+  )`
 Bash array with the chromosomes or regions to be processed. Each entry must match a valid header/region in the reference FASTA.
 The number of elements in CHR_LIST should be consistent with the SLURM array size (#SBATCH --array).
 
