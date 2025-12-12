@@ -71,8 +71,7 @@ VaccDscaff2   37844821
 - `PROBES="" #Provide a probes file to restrict bcftools mpileup and bcftools merge to probe regions only`
 - `CHROM_SIZE="chrom_size.txt"`
 - `REFERENCE="reference/subgenome_blue.multi.fa"`
-```bash
-CHR_LIST=(
+- `CHR_LIST=(
   "VaccDscaff1:42640288-42650287"
 
   "VaccDscaff2:28801683-28811682"
@@ -97,7 +96,7 @@ CHR_LIST=(
 
   "VaccDscaff22:28175518-28185517"
 )
-```
+`
 
 ### Configuring the Array and `PER_TASK`
 
