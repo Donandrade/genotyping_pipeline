@@ -62,8 +62,15 @@ VaccDscaff2   37844821
 
 - Reference fasta + index files
 
+```bash
+reference/subgenome_blue.multi.fa
+```
+
 - FASTQ directory
 
+```bash
+fastq/
+```
 
 ## 5. Configuration in `genotyping.sh`
 
