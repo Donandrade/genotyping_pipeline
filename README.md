@@ -209,9 +209,8 @@ out/
 │   └── <sample>.<CHR>.vcf.gz.tbi
 │
 └── merge/
-├── merged.<CHR>.all.vcf.gz
-├── merged.<CHR>.probes.vcf.gz
-├── merged.<CHR>.called.vcf.gz
-└── *.tbi
-
+    ├── merged.<CHR>.all.vcf.gz
+    ├── merged.<CHR>.probes.vcf.gz
+    ├── merged.<CHR>.called.vcf.gz
+    └── *.tbi
 ```
