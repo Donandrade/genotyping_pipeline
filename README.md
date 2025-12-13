@@ -182,11 +182,6 @@ Located in `reports/`:
 
 ## Directory Structure Created Automatically
 
-# sample3840_R1_paired.fq.gz sample3840_R1_unpaired.fq.gz sample3840_R2_paired.fq.gz sample3840_R2_unpaired.fq.gz
-
-
-
-
 ```bash
 out/
 ├── trimmomatic/
