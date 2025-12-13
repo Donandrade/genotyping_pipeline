@@ -7,10 +7,10 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=20GB
 #SBATCH --time=10:00:00
-#SBATCH --output=/blue/munoz/deandradesilvae/vccinoum_genomes/pipelines/genotyping_pipeline/out_trim10_%A_%a.txt
+#SBATCH --output=./out_trim10_%A_%a.txt
 #SBATCH --array=1-12
 #SBATCH --account=munoz
-#SBATCH --qos=munoz-b
+#SBATCH --qos=munoz
 
 set -euo pipefail
 pwd; hostname; date
@@ -26,6 +26,10 @@ module load picard/3.2.0
 
 # ===== CONFIGURATION =====
 
+# Configuration for the number of threads and samples processed per array task
+THREADS="${SLURM_CPUS_PER_TASK:-4}"
+PER_TASK=256   # 12×256 = 3072 (adjust if needed)
+
 # PROBES (BED) used to:
 #   - restrict bcftools mpileup (-T) when set and non-empty
 #   - restrict bcctools merge per chromosome in the merge step
@@ -36,17 +40,69 @@ PROBES="probes.bed"
 # samples.tsv with header: sample_id  r1  r2  [rgid rglb rgpl rgpu]
 SAMPLES_TSV="samples.tsv"
 
+# Reference genome
+REF="reference/subgenome_blue.multi.fa"
+
 # Same OUTDIR used for trimmed reads
 OUTDIR="./out"
+
+# Creating the output directory
+mkdir -p "$OUTDIR"
+
+# Trimming out directory
+TRIM_DIR="out/trimmomatic"
+mkdir -p "$TRIM_DIR"
 
 # Temporary/final BAM directories (same base as OUTDIR)
 BAM_TMP_DIR="out/bam_tmp"
 BAM_FINAL_DIR="out/bam"
+mkdir -p "$BAM_TMP_DIR" "$BAM_FINAL_DIR"
+
+# If true, include previous pileups listed in PILEUP_TSV during merge
+USE_PREV_PILEUPS=true
+
+# ---- pileup / merge ----
+PILEUP_DIR="out/pileup"
+MERGE_DIR="out/merge"
+
+# TSV/list of previous pileups to include
+PILEUP_TSV="old_pileup.list"
+
+# Directory for VCF pileups split by chromosome/region
+SPLIT_DIR="${PILEUP_DIR}/split_chr"
+
+mkdir -p "$PILEUP_DIR" "$MERGE_DIR" "$SPLIT_DIR"
+
+# -------------------------------------
+# ----- Config to count variant -------
+
+# Expected format: CHROM <tab> SIZE
+CHROM_SIZE="chrom_size.txt"
 
 # Reports directory (read counts, flagstat summaries, timing, etc.)
 REPORT_DIR="reports"
+
 mkdir -p "$REPORT_DIR"
 
+# List of "chromosomes" (FASTA headers or regions)
+CHR_LIST=(
+  "VaccDscaff1:42640288-42650287"
+  "VaccDscaff2:28801683-28811682"
+  "VaccDscaff4:21204352-21214351"
+  "VaccDscaff6:11534481-11544480"
+  "VaccDscaff7:3282650-3292649"
+  "VaccDscaff11:27652190-27662189"
+  "VaccDscaff12:6795405-6805404"
+  "VaccDscaff13:8612145-8622144"
+  "VaccDscaff17:2834352-2844351"
+  "VaccDscaff20:13144615-13154614"
+  "VaccDscaff21:7405786-7415785"
+  "VaccDscaff22:28175518-28185517"
+)
+
+# Trimmomatic
+ADAPTER_PE="${HPC_TRIMMOMATIC_ADAPTER}/TruSeq3-PE.fa"
+TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"
 
 # Read-count report
 READCOUNT_TSV="$REPORT_DIR/read_counts.tsv"
@@ -71,54 +127,6 @@ if [[ ! -s "$TIMING_MERGE_TSV" ]]; then
   echo -e "scope\tid\tstep\tseconds\tstart_epoch\tend_epoch\ttask_id\thost" > "$TIMING_MERGE_TSV"
 fi
 
-# Reference genome
-REF="reference/subgenome_blue.multi.fa"
-
-# Configuration for the number of threads and samples processed per array task
-THREADS="${SLURM_CPUS_PER_TASK:-4}"
-PER_TASK=256   # 12×256 = 3072 (adjust if needed)
-
-# Trimmomatic
-ADAPTER_PE="${HPC_TRIMMOMATIC_ADAPTER}/TruSeq3-PE.fa"
-TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"
-
-# ---- pileup / merge ----
-PILEUP_DIR="out/pileup"
-MERGE_DIR="out/merge"
-# Directory for VCF pileups split by chromosome/region
-SPLIT_DIR="${PILEUP_DIR}/split_chr"
-
-# If true, include previous pileups listed in PILEUP_TSV during merge
-USE_PREV_PILEUPS=true
-
-# TSV/list of previous pileups to include
-PILEUP_TSV="old_pileup.list"
-
-# List of "chromosomes" (FASTA headers or regions)
-CHR_LIST=(
-  "VaccDscaff1:42640288-42650287"
-  "VaccDscaff2:28801683-28811682"
-  "VaccDscaff4:21204352-21214351"
-  "VaccDscaff6:11534481-11544480"
-  "VaccDscaff7:3282650-3292649"
-  "VaccDscaff11:27652190-27662189"
-  "VaccDscaff12:6795405-6805404"
-  "VaccDscaff13:8612145-8622144"
-  "VaccDscaff17:2834352-2844351"
-  "VaccDscaff20:13144615-13154614"
-  "VaccDscaff21:7405786-7415785"
-  "VaccDscaff22:28175518-28185517"
-)
-
-mkdir -p "$PILEUP_DIR" "$MERGE_DIR" "$SPLIT_DIR"
-mkdir -p "$OUTDIR" "$BAM_TMP_DIR" "$BAM_FINAL_DIR"
-
-
-# -------------------------------------
-# ----- Config to count variant -------
-
-# Expected format: CHROM <tab> SIZE
-SCAFFOLD_SIZE_TSV="scaffold_size.txt"
 
 # SNP summary table (mpileup vs call)
 SNP_TABLE_TSV="$REPORT_DIR/table_snps_count_last_by_scaffold.tsv"
@@ -196,10 +204,10 @@ count_fastq_reads () {
 # Trim paired-end reads with Trimmomatic and record read counts before/after
 trim_pair () {
   local sample="$1" r1="$2" r2="$3"
-  local r1p="$OUTDIR/${sample}_R1_paired.fq.gz"
-  local r1u="$OUTDIR/${sample}_R1_unpaired.fq.gz"
-  local r2p="$OUTDIR/${sample}_R2_paired.fq.gz"
-  local r2u="$OUTDIR/${sample}_R2_unpaired.fq.gz"
+  local r1p="$TRIM_DIR/${sample}_R1_paired.fq.gz"
+  local r1u="$TRIM_DIR/${sample}_R1_unpaired.fq.gz"
+  local r2p="$TRIM_DIR/${sample}_R2_paired.fq.gz"
+  local r2u="$TRIM_DIR/${sample}_R2_unpaired.fq.gz"
 
   # Run trimming only if paired outputs do not exist
   if [[ -s "$r1p" && -s "$r2p" ]]; then
@@ -231,8 +239,8 @@ trim_pair () {
 # Align trimmed reads with BWA-MEM, sort, and index
 align_bwa () {
   local sample="$1"
-  local r1p="$OUTDIR/${sample}_R1_paired.fq.gz"
-  local r2p="$OUTDIR/${sample}_R2_paired.fq.gz"
+  local r1p="$TRIM_DIR/${sample}_R1_paired.fq.gz"
+  local r2p="$TRIM_DIR/${sample}_R2_paired.fq.gz"
   local bam_sorted="$BAM_TMP_DIR/${sample}.sorted.group.bam"
 
   if [[ -s "$bam_sorted" ]]; then
@@ -383,14 +391,14 @@ call_bcftools_per_chr () {
     # ----------------------------------------------------
     # SNP summary table (if scaffold_size.txt is available)
     # ----------------------------------------------------
-    if [[ -f "$SCAFFOLD_SIZE_TSV" ]]; then
+    if [[ -f "$CHROM_SIZE" ]]; then
         local tmp_snps="$REPORT_DIR/snp_list_${safe_chr}.txt"
 
         # ---------- mpileup summary ----------
         bcftools query -f '%CHROM\t%POS\n' "$in_vcf" > "$tmp_snps"
 
         local len_info_mp
-        len_info_mp=$(grep -m1 "$chr" "$SCAFFOLD_SIZE_TSV" || echo -e "$chr\tNA")
+        len_info_mp=$(grep -m1 "$chr" "$CHROM_SIZE" || echo -e "$chr\tNA")
 
         local last_pos_mp
         last_pos_mp=$(tail -n 1 "$tmp_snps" 2>/dev/null || echo -e "$chr\t0")
@@ -408,7 +416,7 @@ call_bcftools_per_chr () {
         bcftools query -f '%CHROM\t%POS\n' "$out_vcf" > "$tmp_snps"
 
         local len_info_call
-        len_info_call=$(grep -m1 "$chr" "$SCAFFOLD_SIZE_TSV" || echo -e "$chr\tNA")
+        len_info_call=$(grep -m1 "$chr" "$CHROM_SIZE" || echo -e "$chr\tNA")
 
         local last_pos_call
         last_pos_call=$(tail -n 1 "$tmp_snps" 2>/dev/null || echo -e "$chr\t0")

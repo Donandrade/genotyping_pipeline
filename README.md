@@ -76,6 +76,8 @@ fastq/
 
 ## 5. Configuration in `genotyping.sh`
 
+Open the file `genotyping.sh` (The bash workflow used to run the full analysis) and set the folowing variables according your datasate:
+
 - `SAMPLES_TSV="samples.tsv"`  
   Path to the sample table. This TSV file must contain the sample ID and the paths to the R1 and R2 FASTQ files for each sample.
 
@@ -102,6 +104,7 @@ fastq/
     "VaccDscaff21:7405786-7415785"
     "VaccDscaff22:28175518-28185517"
   )`
+
 Bash array with the chromosomes or regions to be processed. Each entry must match a valid header/region in the reference FASTA.
 The number of elements in CHR_LIST should be consistent with the SLURM array size (#SBATCH --array).
 
@@ -116,7 +119,7 @@ If true, previously generated pileups listed in PILEUP_TSV will be included in t
 Set to false to ignore previous pileups and use only the newly generated ones.
 
 - `PILEUP_TSV="old_pileup.list"`
-List/TSV file with paths to previously generated pileup files to be reused when `USE_PREV_PILEUPS=true`.
+List/TSV file with paths to previously generated pileup files to be reused when `USE_PREV_PILEUPS=true`. Keep this file split by chromosome..
 
 
 ### Configuring the Array and `PER_TASK`
