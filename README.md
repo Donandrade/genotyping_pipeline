@@ -182,7 +182,7 @@ Located in `reports/`:
 
 ## Directory Structure Created Automatically
 
-```tree
+```bash
 out/
 ├── trimmomatic/
 │   ├── <sample>_R1_paired.fq.gz
@@ -212,4 +212,5 @@ out/
     ├── merged.<CHR>.probes.vcf.gz
     ├── merged.<CHR>.called.vcf.gz
     └── *.tbi
+
 ```
