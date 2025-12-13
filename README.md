@@ -185,36 +185,6 @@ Located in `reports/`:
 ```bash
 out/
 ├── trimmomatic/
-│ ├── <sample>_R1_paired.fq.gz
-│ ├── <sample>_R1_unpaired.fq.gz
-│ ├── <sample>_R1_paired.fq.gz
-│ └── <sample>_R2_unpaired.fq.gz
-├── bam/
-│ ├── <sample>.sorted.group.bam
-│ └── <sample>.sorted.group.bam.bai
-├── bam_tmp/
-│ ├── <sample>.flagstat.txt
-│ ├── <sample>.stats.txt
-│ ├── <sample>.idxstats.txt
-│ └── <sample>.bamvalidate.txt
-│
-├── pileup/
-│ ├── <sample>_sorted_norm_split.vcf.gz
-│ ├── <sample>_sorted_norm_split.vcf.gz.tbi
-│ └── split_chr/
-│   ├── <sample>.<CHR>.vcf.gz
-│   └── <sample>.<CHR>.vcf.gz.tbi
-│
-└── merge/
-    ├── merged.<CHR>.all.vcf.gz
-    ├── merged.<CHR>.probes.vcf.gz
-    ├── merged.<CHR>.called.vcf.gz
-    └── *.tbi
-```
-
-```bash
-out/
-├── trimmomatic/
 │   ├── <sample>_R1_paired.fq.gz
 │   ├── <sample>_R1_unpaired.fq.gz
 │   ├── <sample>_R2_paired.fq.gz
