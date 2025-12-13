@@ -34,7 +34,9 @@ The workflow includes:
 - Output reporting (flagstat + summary TSV)
 
 
-## 4. Required Input Files and directories
+## 4. Required Input Files and directories.
+
+See all general description of each file and it configuration in the next topc (5. Configuration in `genotyping.sh`).
 
 - `samples.tsv`
 
