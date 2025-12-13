@@ -182,7 +182,7 @@ Located in `reports/`:
 
 ## Directory Structure Created Automatically
 
-```bash
+```text
 out/
 ├── trimmomatic/
 │   ├── <sample>_R1_paired.fq.gz
