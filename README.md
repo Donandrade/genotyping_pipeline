@@ -3,6 +3,8 @@
 This pipeline performs **read trimming, alignment, QC, per-sample variant calling, per-chromosome merging**, and **optional probe-based filtering**.  
 It is designed for execution as a SLURM array job but can be adapted for other environments.
 
+We are trying to parallelize this pipeline.
+
 ---
 
 ## 2. Getting started
