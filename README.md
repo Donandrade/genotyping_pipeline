@@ -104,7 +104,6 @@ Open the file `genotyping.sh` (The bash workflow used to run the full analysis) 
     "VaccDscaff21:7405786-7415785"
     "VaccDscaff22:28175518-28185517"
   )`
-
 Bash array with the chromosomes or regions to be processed. Each entry must match a valid header/region in the reference FASTA.
 The number of elements in CHR_LIST should be consistent with the SLURM array size (#SBATCH --array).
 
@@ -183,8 +182,16 @@ Located in `reports/`:
 
 ## Directory Structure Created Automatically
 
+# sample3840_R1_paired.fq.gz sample3840_R1_unpaired.fq.gz sample3840_R2_paired.fq.gz sample3840_R2_unpaired.fq.gz
+
 ```bash
 out/
+├──trimmomatic/
+│ ├── <sample>_R1_paired.fq.gz
+│ ├── <sample>_R1_unpaired.fq.gz
+│ ├── <sample>_R1_paired.fq.gz
+│ └── <sample>_R2_unpaired.fq.gz
+│
 ├── bam/
 │ ├── <sample>.sorted.group.bam
 │ └── <sample>.sorted.group.bam.bai
@@ -200,8 +207,8 @@ out/
 │ ├── <sample>_sorted_norm_split.vcf.gz.tbi
 │ │
 │ └── split_chr/
-│ ├── <sample>.<CHR>.vcf.gz
-│ └── <sample>.<CHR>.vcf.gz.tbi
+│   ├── <sample>.<CHR>.vcf.gz
+│   └── <sample>.<CHR>.vcf.gz.tbi
 │
 └── merge/
 ├── merged.<CHR>.all.vcf.gz
