@@ -184,9 +184,12 @@ Located in `reports/`:
 
 # sample3840_R1_paired.fq.gz sample3840_R1_unpaired.fq.gz sample3840_R2_paired.fq.gz sample3840_R2_unpaired.fq.gz
 
+
+
+
 ```bash
 out/
-├──trimmomatic/
+├── trimmomatic/
 │ ├── <sample>_R1_paired.fq.gz
 │ ├── <sample>_R1_unpaired.fq.gz
 │ ├── <sample>_R1_paired.fq.gz
