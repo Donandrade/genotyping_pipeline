@@ -33,9 +33,9 @@ The pipeline performs:
 
 For each sample:
 
-- Trimming of raw FASTQ files
+- Trimming of raw `FASTQ` files
 
-- Alignment with BWA-MEM
+- Alignment with `BWA-MEM`
 
 - Read-group assignment
 
@@ -77,7 +77,7 @@ genotyping_pipeline/
 └── README.md
 ```
 
-## 2. Getting started
+## 4. Getting started
 
 Clone this repository into your SLURM-based HPC account before running the pipeline.
 
@@ -87,7 +87,7 @@ git clone https://github.com/Donandrade/genotyping_pipeline.git
 cd genotyping_pipeline
 ```
 
-## 4. Required Input Files and directories.
+## 5. Required Input Files and directories.
 
 See all general description of each file and it configuration in the next topc (5. Configuration in `genotyping.sh`).
 
@@ -97,6 +97,7 @@ See all general description of each file and it configuration in the next topc (
 sample_id   r1                          r2
 sample001   fastq/sample001_R1.fq.gz    fastq/sample001_R2.fq.gz
 sample002   fastq/sample002_R1.fq.gz    fastq/sample002_R2.fq.gz
+...
 ```
 
 - `probes.bed (optional)`
@@ -106,6 +107,7 @@ VaccDscaff1	0	300	VaccDscaff1_probe001
 VaccDscaff1	1000	1300	VaccDscaff1_probe002
 VaccDscaff1	2000	2300	VaccDscaff1_probe003
 VaccDscaff1	3000	3300	VaccDscaff1_probe004
+...
 ```
 
 - `chrom_size.tsv`
@@ -113,9 +115,16 @@ VaccDscaff1	3000	3300	VaccDscaff1_probe004
 ```bash
 VaccDscaff1   42640288
 VaccDscaff2   37844821
+...
 ```
 
 - Reference fasta + index files
+
+```bash
+reference/subgenome_blue.multi.fa
+reference/subgenome_blue.multi.fa.fai
+(reference must also be indexed for BWA)
+```
 
 ```bash
 reference/subgenome_blue.multi.fa
@@ -123,56 +132,63 @@ reference/subgenome_blue.multi.fa
 
 - FASTQ directory
 
+
 ```bash
 fastq/
+├── sample001_R1.fq.gz
+├── sample001_R2.fq.gz
+└── ...
 ```
 
-## 5. Configuration in `genotyping.sh`
+## 6. Configuration (`genotyping.conf`)
 
-Open the file `genotyping.sh` (The bash workflow used to run the full analysis) and set the folowing variables according your datasate:
+All pipeline parameters are centralized in genotyping.conf. `genotyping.sh`
 
-- `SAMPLES_TSV="samples.tsv"`  
-  Path to the sample table. This TSV file must contain the sample ID and the paths to the R1 and R2 FASTQ files for each sample.
+**Core inputs**
 
-- `PROBES=""  # Provide a probes file to restrict bcftools mpileup and bcftools merge to probe regions only`  
-  Optional BED file with probe regions. If set, `bcftools mpileup` and `bcftools merge` will be restricted to these regions.  
-  Leave it empty (`""`) to use the entire genome.
+```bash
+# ===== threads / batching =====
+THREADS="${SLURM_CPUS_PER_TASK:-10}"  # Number of CPU threads per SLURM task
+PER_TASK=256                          # Number of samples processed per task (Phase 1)
 
-- `CHROM_SIZE="chrom_size.txt"`  
-  File with chromosome/region names and sizes, separated by a tab. Used to guide per-chromosome processing and variant counting.
+# ===== inputs =====
+SAMPLES_TSV="samples.tsv"
+REF="reference/subgenome_blue.multi.fa"
+CHROM_SIZE="chrom_size.txt"
+PROBES="probes.bed"   # optional; empty or unset => genome-wide processing
 
-- `REFERENCE="reference/subgenome_blue.multi.fa"`  
-  Path to the reference genome FASTA file used for alignment and mpileup. Make sure the required index files (e.g. BWA and `.fai`) are available.
+# ===== reuse previous pileups (merge phase) =====
+USE_PREV_PILEUPS=true
+PILEUP_TSV="old_pileup.list"   # Per-chromosome list of existing pileups
 
-- `CHR_LIST=("VaccDscaff1:42640288-42650287"
-    "VaccDscaff2:28801683-28811682"
-    "VaccDscaff4:21204352-21214351"
-    "VaccDscaff6:11534481-11544480"
-    "VaccDscaff7:3282650-3292649"
-    "VaccDscaff11:27652190-27662189"
-    "VaccDscaff12:6795405-6805404"
-    "VaccDscaff13:8612145-8622144"
-    "VaccDscaff17:2834352-2844351"
-    "VaccDscaff20:13144615-13154614"
-    "VaccDscaff21:7405786-7415785"
-    "VaccDscaff22:28175518-28185517"
-  )`
-Bash array with the chromosomes or regions to be processed. Each entry must match a valid header/region in the reference FASTA.
-The number of elements in CHR_LIST should be consistent with the SLURM array size (#SBATCH --array).
+# ===== outputs =====
+OUTDIR="./out"
+TRIM_DIR="${OUTDIR}/trimmomatic"
+BAM_TMP_DIR="${OUTDIR}/bam_tmp"
+BAM_FINAL_DIR="${OUTDIR}/bam"
+PILEUP_DIR="${OUTDIR}/pileup"
+SPLIT_DIR="${PILEUP_DIR}/split_chr"
+MERGE_DIR="${OUTDIR}/merge"
+REPORT_DIR="reports"
 
-- `ADAPTER_PE="${HPC_TRIMMOMATIC_ADAPTER}/TruSeq3-PE.fa"`
-Path to the Trimmomatic adapter file for paired-end reads. Adjust according to your adapter set and environment.
+```
 
-- `TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"`
-Common Trimmomatic trimming options applied to all samples. You can change these values to match your trimming strategy.
+**Input definition**
 
-- `USE_PREV_PILEUPS=true`
-If true, previously generated pileups listed in PILEUP_TSV will be included in the merge step.
-Set to false to ignore previous pileups and use only the newly generated ones.
+- `SAMPLES_TSV`
+TSV file containing sample IDs and paired-end FASTQ paths.
 
-- `PILEUP_TSV="old_pileup.list"`
-List/TSV file with paths to previously generated pileup files to be reused when `USE_PREV_PILEUPS=true`. Keep this file split by chromosome..
+- `REF`
+Reference genome FASTA used for alignment and variant calling.
+Must be indexed for BWA and samtools (.fai).
 
+- `CHROM_SIZE`
+Two-column TSV file (chromosome/scaffold, length) used for chromosome-aware processing and reporting.
+
+- `PROBES` (optional)
+BED file defining probe regions.
+When set, both bcftools mpileup and bcftools merge are restricted to these regions.
+If empty or unset, the pipeline runs genome-wide.
 
 ### Configuring the Array and `PER_TASK`
 
@@ -183,7 +199,32 @@ The number of array tasks (`#SBATCH --array`) and the value of `PER_TASK` must b
 
 Ensure that: (number of array tasks) × PER_TASK >= total number of samples.  Adjust these values according to your dataset size and available computational resources.
 
+### Trimming parameters
 
+```bash
+ADAPTER_PE="${HPC_TRIMMOMATIC_ADAPTER}/TruSeq3-PE.fa"
+TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"
+```
+
+- `ADAPTER_PE`: Adapter file used by Trimmomatic
+
+- `TRIM_OPTS_COMMON`: Common trimming options applied to all samples 
+
+
+### Reusing previous pileups (optional)
+
+To reuse pileups generated in previous runs, set the following options in `genotyping.conf`:
+
+```bash
+USE_PREV_PILEUPS=true
+PILEUP_TSV="old_pileup.list"
+```
+
+When enabled, previously generated pileups listed in `PILEUP_TSV` are included in the merge step
+
+Useful for incremental runs or combining datasets
+
+The file must be organized by chromosome/region
 
 ## 6. Running
 
