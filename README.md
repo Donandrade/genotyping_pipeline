@@ -164,7 +164,7 @@ fastq/
 
 All pipeline parameters are centralized in `genotyping.conf`.
 
-**Core inputs in `genotyping.conf`**
+### Core inputs in `genotyping.conf` 
 
 ```bash
 # ===== threads / batching =====
@@ -193,7 +193,7 @@ REPORT_DIR="reports"
 
 ```
 
-**Input definition**
+### Input definition
 
 - `SAMPLES_TSV`
 TSV file containing sample IDs and paired-end FASTQ paths.
