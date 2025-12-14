@@ -77,6 +77,26 @@ genotyping_pipeline/
 └── README.md
 ```
 
+### Main workflow files
+
+- `genotyping_samples.sh`
+Implements Phase 1 (per-sample processing).
+This script performs read trimming, alignment, read-group assignment, BAM post-processing and QC, and generates per-sample pileups.
+It is designed to run as a SLURM array over samples, controlled by PER_TASK.
+
+- `genotyping_merge.sh`
+Implements Phase 2 (per-chromosome or per-region processing).
+This script collects pileups from all samples (and optionally from previous runs), performs chromosome-wise merging, and runs variant calling.
+It is designed to run as a SLURM array over chromosomes or regions, as defined in CHR_LIST.
+
+- `genotyping.conf`
+Central configuration file sourced by all pipeline scripts.
+It defines input files, reference paths, resource usage, output directories, probe behavior, chromosome lists, and optional reuse of previous pileups.
+
+- `submit.sh`
+SLURM submission wrapper that orchestrates the workflow execution.
+It submits the per-sample phase first, followed by the per-chromosome merge phase, ensuring the correct execution order and array configuration.
+
 ## 4. Getting started
 
 Clone this repository into your SLURM-based HPC account before running the pipeline.
