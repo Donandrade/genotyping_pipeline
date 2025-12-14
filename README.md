@@ -72,7 +72,7 @@ genotyping_pipeline/
 ├── probes.bed              # Optional probe regions
 ├── chrom_size.txt          # Chromosome/scaffold sizes
 ├── old_pileup.list         # Path for the old pileups splited by chromosomes
-├── reference/              # Exemple of Reference genome + indexes (Just for test)
+├── reference/              # Exemple of Reference genome + bwa indexes (Just for test)
 ├── fastq/                  # Exemple of FASTQ file (Just for test)
 └── README.md
 ```
