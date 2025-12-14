@@ -109,7 +109,7 @@ cd genotyping_pipeline
 
 ## 5. Required Input Files and directories.
 
-See all general description of each file and it configuration in the next topc (5. Configuration in `genotyping.sh`).
+See all general description of each file and it configuration in the next topc - **6. Configuration (`genotyping.conf`)**.
 
 - `samples.tsv`
 
