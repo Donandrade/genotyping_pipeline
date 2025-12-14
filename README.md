@@ -33,7 +33,7 @@ The pipeline performs:
    - Set `SAMPLES_TSV`
    - Set `REF`
    - (Optional) Set `PROBES`
-   - See more detales in the [Configuration (`genotyping.conf`)](Configuration-genotypingconf) section
+   - See more detales in the [Configuration (`genotyping.conf`)](#Configuration-genotypingconf) section
 3. Adjust `submit.sh` (array size, resources)
 4. Run:
    ```bash
