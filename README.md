@@ -1,11 +1,81 @@
 ## 1. Project Overview
 
-This pipeline performs **read trimming, alignment, QC, per-sample variant calling, per-chromosome merging**, and **optional probe-based filtering**.  
-It is designed for execution as a SLURM array job but can be adapted for other environments.
+This repository contains a **SLURM-oriented genotyping pipeline** designed to efficiently process large sequencing datasets by splitting the workflow into two independent parallel phases:
 
-We are trying to parallelize this pipeline.
+**Per-sample processing** (FASTQ → BAM → per-sample pileup)
+
+**Per-chromosome** (or region) merging and genotyping
+
+The pipeline performs:
+
+- Read trimming
+
+- Alignment with BWA-MEM
+
+- Read-group assignment
+
+- BAM post-processing and QC
+
+- Per-sample bcftools mpileup
+
+- Per-chromosome / per-region merging
+
+- Optional probe-based restriction using BED files
+
+- Variant calling and summary reports
 
 ---
+
+
+## 2. Workflow Summary
+
+**Phase 1** – Per-sample (SLURM array over samples)
+
+For each sample:
+
+- Trimming of raw FASTQ files
+
+- Alignment with BWA-MEM
+
+- Read-group assignment
+
+- BAM sorting, indexing, and QC
+
+- `bcftools mpileup` (genome-wide or probe-restricted)
+
+**Phase 2** – Per-chromosome / region (SLURM array over regions)
+
+For each chromosome, either the entire chromosome or the probe-defined region::
+
+- Collection of all per-sample pileups
+
+- Optional probe-based restriction
+
+- `bcftools merge`
+
+- Variant calling
+
+- Per-chromosome summary statistics
+
+
+## 3. Repository Organization
+
+The workflow is intentionally divided into **independent scripts**, each with a clear responsibility:
+
+```bash
+genotyping_pipeline/
+├── genotyping_samples.sh   # Phase 1: per-sample processing
+├── genotyping_merge.sh     # Phase 2: per-chromosome / region merge
+├── genotyping.conf         # Central configuration file
+├── submit.sh               # SLURM submission wrapper
+├── samples.tsv             # Sample table (input)
+├── probes.bed              # Optional probe regions
+├── chrom_size.txt          # Chromosome/scaffold sizes
+├── old_pileup.list         # Path for the old pileups splited by chromosomes
+├── reference/              # Exemple of Reference genome + indexes (Just for test)
+├── fastq/                  # Exemple of FASTQ file (Just for test)
+└── README.md
+```
 
 ## 2. Getting started
 
@@ -13,28 +83,9 @@ Clone this repository into your SLURM-based HPC account before running the pipel
 
 ```bash
 git clone https://github.com/Donandrade/genotyping_pipeline.git
+
+cd genotyping_pipeline
 ```
-
-## 3. Workflow summary
-
-The workflow includes:
-
-- Trimming of raw FASTQ files
-
-- Alignment using BWA-MEM
-
-- Read-group assignment
-
-- BAM post-processing and QC
-
-- mpileup generation (optionally restricted to probe regions)
-
-- Chromosome-wise merging of pileups
-
-- Optional integration of probe BED regions
-
-- Output reporting (flagstat + summary TSV)
-
 
 ## 4. Required Input Files and directories.
 
