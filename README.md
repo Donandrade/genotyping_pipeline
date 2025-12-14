@@ -29,10 +29,11 @@ The pipeline performs:
 ## Quick Start
 
 1. Clone the repository on a SLURM-based HPC
-2. Edit `genotyping.conf`:
+2. Configuratio in `genotyping.conf`:
    - Set `SAMPLES_TSV`
    - Set `REF`
    - (Optional) Set `PROBES`
+   - See more detales in [Configuration (`genotyping.conf`)](Configuration-genotypingconf) section
 3. Adjust `submit.sh` (array size, resources)
 4. Run:
    ```bash
