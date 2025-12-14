@@ -109,7 +109,7 @@ cd genotyping_pipeline
 
 ## 5. Required Input Files and directories.
 
-See all general description of each file and it configuration in the next topc - **6. Configuration (`genotyping.conf`)**.
+See all general description of each file and it configuration in the next topc  (**6. Configuration (`genotyping.conf`)**).
 
 - `samples.tsv`
 
@@ -162,9 +162,9 @@ fastq/
 
 ## 6. Configuration (`genotyping.conf`)
 
-All pipeline parameters are centralized in genotyping.conf. `genotyping.sh`
+All pipeline parameters are centralized in `genotyping.conf`.
 
-**Core inputs**
+**Core inputs in `genotyping.conf`**
 
 ```bash
 # ===== threads / batching =====
