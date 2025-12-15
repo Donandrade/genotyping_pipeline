@@ -19,7 +19,6 @@ mkdir -p logs
 
 module load bcftools/1.22
 module load samtools/1.20
-# module load htslib  # se precisar tabix separado
 
 source ./genotyping.conf
 

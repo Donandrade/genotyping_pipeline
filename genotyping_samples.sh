@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=geno_samples
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=deandradesilvae@ufl.edu
+#SBATCH --mail-user=youremail@ufl.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
@@ -10,7 +10,7 @@
 #SBATCH --output=./logs/geno_samples_%A_%a.txt
 #SBATCH --account=munoz
 #SBATCH --qos=munoz
-# NOTE: --array será passado no sbatch (submit.sh)
+# NOTE: --array #Setting in  submit.sh
 
 set -euo pipefail
 pwd; hostname; date
@@ -28,7 +28,7 @@ module load picard/3.2.0
 # ===== config =====
 source ./genotyping.conf
 
-# agora a variável existe no ambiente
+# Setting the Trimmomatic parameters
 ADAPTER_PE="${HPC_TRIMMOMATIC_ADAPTER}/TruSeq3-PE.fa"
 TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"
 
