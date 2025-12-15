@@ -234,7 +234,6 @@ TRIM_OPTS_COMMON="SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50"
 
 - `TRIM_OPTS_COMMON`: Common trimming options applied to all samples 
 
-
 ### Reusing previous pileups (optional)
 
 To reuse pileups generated in previous runs, set the following options in `genotyping.conf`:
@@ -248,7 +247,7 @@ When enabled, previously generated pileups listed in `PILEUP_TSV` are included i
 
 Useful for incremental runs or combining datasets
 
-The file must be organized by chromosome/region
+The previous pileups file must be **split by chromosome or by region**, depending on how the current pipeline is being run.
 
 ### Configuring the Array and `PER_TASK`
 
