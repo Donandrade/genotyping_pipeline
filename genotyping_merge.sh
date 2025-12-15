@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=geno_merge
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=deandradesilvae@ufl.edu
+#SBATCH --mail-user=youremail@ufl.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
