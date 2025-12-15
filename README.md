@@ -70,6 +70,15 @@ For each chromosome, either the entire chromosome or the probe-defined region::
 
 - Per-chromosome summary statistics
 
+## Getting started
+
+Clone this repository into your SLURM-based HPC account before running the pipeline.
+
+```bash
+git clone https://github.com/Donandrade/genotyping_pipeline.git
+
+cd genotyping_pipeline
+```
 
 ##  Repository Organization
 
@@ -89,7 +98,6 @@ genotyping_pipeline/
 ├── fastq/                  # Exemple of FASTQ file (Just for test)
 └── README.md
 ```
-
 ### Main workflow files
 
 - `genotyping_samples.sh:`
@@ -109,16 +117,6 @@ It defines input files, reference paths, resource usage, output directories, pro
 - `submit.sh:`
 SLURM submission wrapper that orchestrates the workflow execution.
 It submits the per-sample phase first, followed by the per-chromosome merge phase, ensuring the correct execution order and array configuration.
-
-## Getting started
-
-Clone this repository into your SLURM-based HPC account before running the pipeline.
-
-```bash
-git clone https://github.com/Donandrade/genotyping_pipeline.git
-
-cd genotyping_pipeline
-```
 
 ## Required Input Files and directories.
 
