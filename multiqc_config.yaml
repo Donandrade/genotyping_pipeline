@@ -1,0 +1,34 @@
+report_title: "Blueberry Genotyping Report"
+report_comment: "Mains qulity statistics"
+
+# 1. Organiza a ordem das seções no menu lateral
+report_section_order:
+    trimmomatic: 10
+    samtools: 20
+    picard: 30
+    mosdepth: 40
+    bcftools: 50
+
+# 2. Configura a Tabela de Estatísticas Gerais (o topo do report)
+table_columns_visible:
+    Trimmomatic: True
+    Samtools: True
+    Picard: True
+    Mosdepth: True
+    BCFTools: False  # ESCONDE variantes da tabela principal para não poluir
+
+# 3. Cria uma tabela separada apenas para Variantes (BCFTools)
+custom_data:
+    bcftools_stats:
+        parent_id: bcftools
+        parent_name: "Variant Calling Stats"
+        section_name: "Variantes por Cromossomo"
+        description: "Estatísticas consolidadas por scaffold (scaffolds aparecem como nomes de amostra nesta seção)."
+
+# 4. Limpeza de nomes para a tabela principal
+sample_names_replace_suffixes:
+    - ".sorted.group.rmdup"
+    - ".sorted.group"
+    - ".sorted"
+    - ".trim"
+    - "_paired"

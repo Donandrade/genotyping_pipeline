@@ -1,4 +1,7 @@
 out
 out*
+output/
+logs/
 old_pileups
 reports
+work/
