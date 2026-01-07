@@ -30,7 +30,6 @@ echo "========================================================"
 # 3. Execução Simplificada
 # O Nextflow vai ler 'params.ref' e 'params.samples' do nextflow.config
 nextflow run main.nf \
-     \
     -resume \
     -with-report logs/report.html \
     -with-timeline logs/timeline.html
