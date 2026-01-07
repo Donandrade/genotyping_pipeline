@@ -5,3 +5,4 @@ logs/
 old_pileups
 reports
 work/
+.nextflow*
