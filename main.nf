@@ -1,6 +1,35 @@
 nextflow.enable.dsl=2
 
-// --- PROCESSOS ---
+// --- HELPER FUNCTIONS ---
+
+/**
+ * Generates chunks. 
+ * If chromosome < chunk_size: returns "chrom"
+ * If chromosome > chunk_size: returns "chrom:start-end"
+ */
+
+def create_chunks(fai_path, chunk_size) {
+    def chunks = []
+    file(fai_path).eachLine { line ->
+        def fields = line.split('\t')
+        def chrom = fields[0]
+        def size = fields[1].toLong()
+
+        if (size <= chunk_size) {
+            // Use the whole chromosome if it's smaller than the chunk limit
+            chunks << "${chrom}"
+        } else {
+            // Split into coordinate-based windows
+            for (long start = 0; start < size; start += chunk_size) {
+                long end = Math.min(start + chunk_size, size)
+                chunks << "${chrom}:${start + 1}-${end}"
+            }
+        }
+    }
+    return chunks
+}
+
+// --- PROCESSES ---
 
 process TRIM {
     tag "$sample"
@@ -16,12 +45,17 @@ process TRIM {
 
     script:
     """
+    # Define a variável localmente para garantir a expansão correta
     ADAPTERS="\$HPC_TRIMMOMATIC_ADAPTER/TruSeq3-PE.fa"
+
     trimmomatic PE -threads ${task.cpus} -phred33 \
         ${reads[0]} ${reads[1]} \
         ${sample}_R1_paired.fq.gz ${sample}_R1_unpaired.fq.gz \
         ${sample}_R2_paired.fq.gz ${sample}_R2_unpaired.fq.gz \
-        ILLUMINACLIP:\${ADAPTERS}:2:30:10 SLIDINGWINDOW:4:20 TRAILING:20 MINLEN:50 \
+        ILLUMINACLIP:\${ADAPTERS}:2:30:10 \
+        SLIDINGWINDOW:4:20 \
+        TRAILING:20 \
+        MINLEN:50 \
         2> ${sample}.trim.log
     """
 }
@@ -29,183 +63,117 @@ process TRIM {
 process ALIGN {
     tag "$sample"
     publishDir "${params.outdir}/02_bam", mode: 'copy'
-
-    input:
+    input: 
         tuple val(sample), path(r1), path(r2)
         path ref
         path ref_indices
-
-    output:
-        tuple val(sample), path("${sample}.sorted.group.bam"), path("${sample}.sorted.group.bam.bai"), emit: bam
-
+    output: tuple val(sample), path("${sample}.sorted.bam"), path("${sample}.sorted.bam.bai"), emit: bam
     script:
     """
-    bwa mem -t ${task.cpus} -M \
-        -R "@RG\\tID:${sample}\\tLB:lib1\\tPL:ILLUMINA\\tPU:10K\\tSM:${sample}" \
-        $ref $r1 $r2 | \
-    samtools view -hb - | \
-    samtools sort -@ ${task.cpus} -o ${sample}.sorted.group.bam -
-
-    samtools index ${sample}.sorted.group.bam
+    bwa mem -t ${task.cpus} $ref $r1 $r2 | samtools sort -@ ${task.cpus} -o ${sample}.sorted.bam -
+    samtools index ${sample}.sorted.bam
     """
 }
 
-process QC_BAM {
+// 1. Generate Individual Pileup
+process INDIVIDUAL_PILEUP {
     tag "$sample"
-    publishDir "${params.outdir}/05_qc/samtools", mode: 'copy'
-    
     input:
         tuple val(sample), path(bam), path(bai)
-        
-    output:
-        path "${sample}.*"
-
-    script:
-    """
-    samtools flagstat $bam > ${sample}.flagstat.txt
-    samtools stats $bam > ${sample}.stats.txt
-    """
-}
-
-process COVERAGE_QC {
-    tag "$sample"
-    publishDir "${params.outdir}/05_qc/coverage", mode: 'copy'
-    
-    input:
-        tuple val(sample), path(bam), path(bai)
-        
-    output:
-        path "${sample}.mosdepth.*"
-
-    script:
-    """
-    mosdepth -n -x --threads ${task.cpus} ${sample} ${bam}
-    """
-}
-
-process INDIVIDUAL_CALL {
-    tag "$sample | $region"
-    publishDir "${params.outdir}/03_individual_vcfs", mode: 'copy'
-
-    input:
-        tuple val(sample), path(bam), path(bai), val(region)
         path ref
         path ref_indices
         path probes_file
-
     output:
-        tuple val(region), path("${sample}.${safe_region}.vcf.gz"), emit: vcf
-        path "${sample}.${safe_region}.vcf.gz.tbi", emit: tbi
-
+        tuple val(sample), path("${sample}.raw.vcf.gz"), path("${sample}.raw.vcf.gz.tbi"), emit: vcf
     script:
-    safe_region = region.replace(':', '_').replace('-', '_')
-    def target_opt = params.probes ? "-T ${probes_file}" : "-r ${region}"
+    def target_opt = params.probes ? "-T ${probes_file}" : ""
     """
-    bcftools mpileup ${target_opt} -f ${ref} --annotate FORMAT/AD,FORMAT/DP --min-MQ 0 ${bam} -Oz -o raw.vcf.gz
-    bcftools sort raw.vcf.gz | \
-    bcftools norm -O u --atomize -f ${ref} | \
-    bcftools norm --multiallelics -any -f ${ref} -O z -o ${sample}.${safe_region}.vcf.gz
-    tabix -f -p vcf ${sample}.${safe_region}.vcf.gz
+    bcftools mpileup ${target_opt} -f ${ref} --annotate FORMAT/AD,FORMAT/DP ${bam} -Oz -o ${sample}.raw.vcf.gz
+    tabix -p vcf ${sample}.raw.vcf.gz
     """
 }
 
-process MERGE_AND_CALL {
-    tag "$region"
-    publishDir "${params.outdir}/04_final_calls", mode: 'copy'
-
+// 2. Split VCF into Chunks (The Scatter Step)
+process SPLIT_VCF_TO_CHUNK {
+    tag "$sample | $chunk" 
+    publishDir "${params.outdir}/04_splited_call", mode: 'copy'
     input:
-        tuple val(region), path(vcfs)
-        path tbis
+        tuple val(sample), path(vcf), path(tbi), val(chunk)
+    output:
+        tuple val(chunk), path("${sample}.${safe_chunk}.chunk.vcf.gz"), path("${sample}.${safe_chunk}.chunk.vcf.gz.tbi"), emit: chunk_vcf
+    script:
+    safe_chunk = chunk.replace(':', '_').replace('-', '_')
+    """
+    bcftools view -r ${chunk} ${vcf} -Oz -o ${sample}.${safe_chunk}.chunk.vcf.gz
+    tabix -p vcf ${sample}.${safe_chunk}.chunk.vcf.gz
+    """
+}
+
+// 3. Joint Call per Chunk (The Gather Step)
+process MERGE_AND_CALL_BY_CHUNK {
+    tag "$chunk"
+    publishDir "${params.outdir}/04_final_calls/chunks", mode: 'copy'
+    input:
+        tuple val(chunk), path(vcfs), path(tbis)
         path ref
-
     output:
-        path "merged.${safe_region}.all.vcf.gz", emit: vcf_raw
-        path "merged.${safe_region}.called.vcf.gz", emit: vcf_called
-        path "${safe_region}.vcf_stats.txt", emit: stats
-
+        path "merged.${safe_chunk}.pileup.vcf.gz", emit: vcf_merged
+        path "merged.${safe_chunk}.called.vcf.gz", emit: vcf_called
+        path "${safe_chunk}.stats.txt", emit: stats
     script:
-    safe_region = region.replace(':', '_').replace('-', '_')
-    def region_filter = (region == 'target_probes') ? "" : "-r ${region}"
-
+    safe_chunk = chunk.replace(':', '_').replace('-', '_')
     """
-    # Criar lista de arquivos garantida
-    for f in ${vcfs}; do
-        echo \$f >> vcf_list.txt
-    done
-    sort -u vcf_list.txt > vcf_list_sorted.txt
-
-    bcftools merge -Oz --threads ${task.cpus} -m none \
-        --file-list vcf_list_sorted.txt \
-        ${region_filter} \
-        -o merged.${safe_region}.all.vcf.gz
-
-    # Mantido sem -v para diagnóstico de conteúdo
-    bcftools call -m -Oz -o merged.${safe_region}.called.vcf.gz merged.${safe_region}.all.vcf.gz
-
-    bcftools stats merged.${safe_region}.called.vcf.gz > ${safe_region}.vcf_stats.txt
-    tabix -f -p vcf merged.${safe_region}.called.vcf.gz
+    bcftools merge -Oz --threads ${task.cpus} ${vcfs} -o merged.${safe_chunk}.pileup.vcf.gz
+    bcftools call -m -Oz -o merged.${safe_chunk}.called.vcf.gz merged.${safe_chunk}.pileup.vcf.gz
+    bcftools stats merged.${safe_chunk}.called.vcf.gz > ${safe_chunk}.stats.txt
     """
 }
 
-process MULTIQC {
-    tag "Geral"
-    publishDir "${params.outdir}/multiqc_report", mode: 'copy'
-
-    input:
-        path logs
-        path config
-
-    output:
-        path "multiqc_report.html"
-
+process CONCATENATE_ALL {
+    tag "Final Join"
+    publishDir "${params.outdir}/04_final_calls/global", mode: 'copy'
+    input: path(called_vcfs)
+    output: path "genome_wide_final.vcf.gz"
     script:
     """
-    multiqc . -c $config
+    bcftools concat -Oz -o genome_wide_final.vcf.gz \$(ls *.vcf.gz | sort -V)
+    tabix -p vcf genome_wide_final.vcf.gz
     """
 }
 
 // --- WORKFLOW ---
 
 workflow {
+    // Input setup
     fastq_ch = Channel.fromPath(params.samples).splitCsv(header:true, sep:'\t')
         .map { row -> tuple(row.sample, [file(row.r1), file(row.r2)]) }
-    
+
     ref_file = file(params.ref)
     ref_indices = Channel.fromPath("${params.ref}.*").collect()
-    mqc_config = file(params.multiqc_config)
+    probes_file = params.probes ? file(params.probes) : []
 
-    // 1. Processamento Inicial
+    // Alignment phase
     TRIM(fastq_ch)
     ALIGN(TRIM.out.paired, ref_file, ref_indices)
 
-    // 2. Controle de Qualidade (QC)
-    ch_samtools_logs = QC_BAM(ALIGN.out.bam)
-    ch_mosdepth_logs = COVERAGE_QC(ALIGN.out.bam)
+    // Step 1: Broad Pileup
+    INDIVIDUAL_PILEUP(ALIGN.out.bam, ref_file, ref_indices, probes_file)
 
-    // 3. Seleção de Alvo e Calling
-    if (params.probes) {
-        ch_regions = Channel.fromList(['target_probes'])
-        ch_probes_file = Channel.fromPath(params.probes).collect()
-    } else {
-        ch_regions = Channel.fromPath(params.regions).splitText().map{ it.trim() }
-        ch_probes_file = Channel.value([])
-    }
+    // Step 2: Chunk Generation (with size check)
+    def chunks_list = create_chunks("${params.ref}.fai", params.chunk_size)
+    ch_chunks = Channel.fromList(chunks_list)
 
-    INDIVIDUAL_CALL(ALIGN.out.bam.combine(ch_regions), ref_file, ref_indices, ch_probes_file)
+    // Step 3: Scatter VCFs into the defined chunks
+    // Every sample VCF is now split into the sub-regions defined in Step 2
+    ch_split_input = INDIVIDUAL_PILEUP.out.vcf.combine(ch_chunks)
+    SPLIT_VCF_TO_CHUNK(ch_split_input)
 
-    // 4. Agrupamento e Merge
-    vcf_grouped = INDIVIDUAL_CALL.out.vcf.groupTuple(by: 0)
-    tbi_all = INDIVIDUAL_CALL.out.tbi.collect()
+    // Step 4: Gather all samples for each specific chunk
+    vcf_grouped_by_chunk = SPLIT_VCF_TO_CHUNK.out.chunk_vcf.groupTuple(by: 0)	
 
-    MERGE_AND_CALL(vcf_grouped, tbi_all, ref_file)
+    // Step 5: Parallel Joint Calling
+    MERGE_AND_CALL_BY_CHUNK(vcf_grouped_by_chunk, ref_file)
 
-    // 5. Relatórios Finais (Coleta todos os logs produzidos)
-    ch_multiqc_input = Channel.empty()
-        .mix(TRIM.out.log)
-        .mix(ch_samtools_logs)
-        .mix(ch_mosdepth_logs)
-        .mix(MERGE_AND_CALL.out.stats)
-        .collect()
-
-    MULTIQC(ch_multiqc_input, mqc_config)
+    // Step 6: Final Consolidation
+    CONCATENATE_ALL(MERGE_AND_CALL_BY_CHUNK.out.vcf_called.collect())
 }

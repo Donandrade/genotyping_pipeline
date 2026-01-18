@@ -2,7 +2,7 @@
 #SBATCH --job-name=nf_blueberry
 #SBATCH --output=logs/nf_manager_%j.log
 #SBATCH --mail-type=FAIL,END
-#SBATCH --mail-user=youremail@ufl.edu
+#SBATCH --mail-user=$MY_EMAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -10,6 +10,9 @@
 #SBATCH --time=96:00:00
 #SBATCH --account=munoz
 #SBATCH --qos=munoz-b
+
+# Run this sbatch script as shown below to pass the email via parameter.
+## sbatch --mail-user=seu-email@ufl.edu run_pipeline.sh
 
 # 1. Preparação
 mkdir -p logs
@@ -29,7 +32,13 @@ echo "========================================================"
 
 # 3. Execução Simplificada
 # O Nextflow vai ler 'params.ref' e 'params.samples' do nextflow.config
+
+# Use "--probes false" to run the pileup for the intire chromosome 
 nextflow run main.nf \
+    --samples sample_1_10.tsv \
+    --probes probes.bed \
+    --past_calls null \
+    --chunk_size 10000 \
     -resume \
     -with-report logs/report.html \
     -with-timeline logs/timeline.html

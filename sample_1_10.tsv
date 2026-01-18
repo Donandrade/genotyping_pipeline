@@ -1,0 +1,10 @@
+sample	r1	r2
+sample0001	fastq_set1/sample0001_R1.fq.gz	fastq_set1/sample0001_R2.fq.gz
+sample0002	fastq_set1/sample0002_R1.fq.gz	fastq_set1/sample0002_R2.fq.gz
+sample0003	fastq_set1/sample0003_R1.fq.gz	fastq_set1/sample0003_R2.fq.gz
+sample0004	fastq_set1/sample0004_R1.fq.gz	fastq_set1/sample0004_R2.fq.gz
+sample0005	fastq_set1/sample0005_R1.fq.gz	fastq_set1/sample0005_R2.fq.gz
+sample0006	fastq_set1/sample0006_R1.fq.gz	fastq_set1/sample0006_R2.fq.gz
+sample0007	fastq_set1/sample0007_R1.fq.gz	fastq_set1/sample0007_R2.fq.gz
+sample0008	fastq_set1/sample0008_R1.fq.gz	fastq_set1/sample0008_R2.fq.gz
+sample0009	fastq_set1/sample0009_R1.fq.gz	fastq_set1/sample0009_R2.fq.gz
