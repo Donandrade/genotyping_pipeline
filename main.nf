@@ -1,13 +1,6 @@
 nextflow.enable.dsl=2
 
 // --- HELPER FUNCTIONS ---
-
-/**
- * Generates chunks. 
- * If chromosome < chunk_size: returns "chrom"
- * If chromosome > chunk_size: returns "chrom:start-end"
- */
-
 def create_chunks(fai_path, chunk_size) {
     def chunks = []
     file(fai_path).eachLine { line ->
@@ -16,10 +9,8 @@ def create_chunks(fai_path, chunk_size) {
         def size = fields[1].toLong()
 
         if (size <= chunk_size) {
-            // Use the whole chromosome if it's smaller than the chunk limit
             chunks << "${chrom}"
         } else {
-            // Split into coordinate-based windows
             for (long start = 0; start < size; start += chunk_size) {
                 long end = Math.min(start + chunk_size, size)
                 chunks << "${chrom}:${start + 1}-${end}"
@@ -45,9 +36,7 @@ process TRIM {
 
     script:
     """
-    # Define a variável localmente para garantir a expansão correta
     ADAPTERS="\$HPC_TRIMMOMATIC_ADAPTER/TruSeq3-PE.fa"
-
     trimmomatic PE -threads ${task.cpus} -phred33 \
         ${reads[0]} ${reads[1]} \
         ${sample}_R1_paired.fq.gz ${sample}_R1_unpaired.fq.gz \
@@ -63,19 +52,29 @@ process TRIM {
 process ALIGN {
     tag "$sample"
     publishDir "${params.outdir}/02_bam", mode: 'copy'
-    input: 
+    
+    input:
         tuple val(sample), path(r1), path(r2)
         path ref
         path ref_indices
-    output: tuple val(sample), path("${sample}.sorted.bam"), path("${sample}.sorted.bam.bai"), emit: bam
+        
+    output:
+        tuple val(sample), path("${sample}.sorted.bam"), path("${sample}.sorted.bam.bai"), emit: bam
+        
     script:
     """
-    bwa mem -t ${task.cpus} $ref $r1 $r2 | samtools sort -@ ${task.cpus} -o ${sample}.sorted.bam -
+    # Using -R to define a clean Read Group. 
+    # This prevents the "2:2:2:" naming snowball by standardizing sample IDs.
+    bwa mem -t ${task.cpus} \\
+        -R "@RG\\tID:${sample}\\tLB:lib1\\tPL:ILLUMINA\\tPU:unit1\\tSM:${sample}" \\
+        $ref $r1 $r2 | \\
+    samtools sort -@ ${task.cpus} -o ${sample}.sorted.bam -
+    
     samtools index ${sample}.sorted.bam
     """
 }
 
-// 1. Generate Individual Pileup
+
 process INDIVIDUAL_PILEUP {
     tag "$sample"
     input:
@@ -93,9 +92,8 @@ process INDIVIDUAL_PILEUP {
     """
 }
 
-// 2. Split VCF into Chunks (The Scatter Step)
 process SPLIT_VCF_TO_CHUNK {
-    tag "$sample | $chunk" 
+    tag "$sample | $chunk"
     publishDir "${params.outdir}/04_splited_call", mode: 'copy'
     input:
         tuple val(sample), path(vcf), path(tbi), val(chunk)
@@ -109,22 +107,60 @@ process SPLIT_VCF_TO_CHUNK {
     """
 }
 
-// 3. Joint Call per Chunk (The Gather Step)
 process MERGE_AND_CALL_BY_CHUNK {
     tag "$chunk"
     publishDir "${params.outdir}/04_final_calls/chunks", mode: 'copy'
+
     input:
-        tuple val(chunk), path(vcfs), path(tbis)
+        // O segredo está aqui: o Nextflow renomeia os arquivos no 'stage' do processo
+        tuple val(chunk), path(vcfs), path(tbis), path('past.vcf.gz'), path('past.vcf.gz.tbi')
         path ref
+
     output:
         path "merged.${safe_chunk}.pileup.vcf.gz", emit: vcf_merged
         path "merged.${safe_chunk}.called.vcf.gz", emit: vcf_called
+        path "merged.${safe_chunk}.called.vcf.gz.tbi", emit: tbi_called
         path "${safe_chunk}.stats.txt", emit: stats
+
     script:
     safe_chunk = chunk.replace(':', '_').replace('-', '_')
     """
-    bcftools merge -Oz --threads ${task.cpus} ${vcfs} -o merged.${safe_chunk}.pileup.vcf.gz
-    bcftools call -m -Oz -o merged.${safe_chunk}.called.vcf.gz merged.${safe_chunk}.pileup.vcf.gz
+    # 1. Merge das amostras atuais (2026)
+    echo "${vcfs.join('\n')}" > vcf_list.txt
+    bcftools merge -Oz --threads ${task.cpus} -l vcf_list.txt -o novas_amostras.vcf.gz
+    tabix -f -p vcf novas_amostras.vcf.gz
+
+    # 2. Lógica de Merge Histórico
+    # Verificamos se 'past.vcf.gz' é um VCF real (tem conteúdo e não é o dummy vazio)
+    if [ -s past.vcf.gz ] && [ "\$(zcat past.vcf.gz | head -c 1 | wc -c)" -ne 0 ]; then
+        
+        # Garantimos que o índice do passado está atualizado (resolve o erro 255)
+        tabix -f -p vcf past.vcf.gz
+        
+        bcftools merge --force-samples -Oz --threads ${task.cpus} \
+            novas_amostras.vcf.gz past.vcf.gz \
+            -o tmp_merged.vcf.gz
+        mv tmp_merged.vcf.gz merged.${safe_chunk}.pileup.vcf.gz
+    else
+        # Se for a primeira rodada ou passado inválido, usamos apenas as novas
+        mv novas_amostras.vcf.gz merged.${safe_chunk}.pileup.vcf.gz
+    fi
+
+    # 3. Indexação do Pileup Final (essencial para o calling)
+    tabix -f -p vcf merged.${safe_chunk}.pileup.vcf.gz
+
+    # 4. Variant Calling
+    # Mesmo se houver apenas header, o bcftools call lida com isso, mas checamos variantes:
+    V_COUNT=\$(bcftools view -H merged.${safe_chunk}.pileup.vcf.gz | head -n 1 | wc -l)
+
+    if [ "\$V_COUNT" -gt 0 ]; then
+        bcftools call -m -Oz -o merged.${safe_chunk}.called.vcf.gz merged.${safe_chunk}.pileup.vcf.gz
+    else
+        echo "Chunk ${chunk} sem variantes. Mantendo apenas header."
+        cp merged.${safe_chunk}.pileup.vcf.gz merged.${safe_chunk}.called.vcf.gz
+    fi
+
+    tabix -f -p vcf merged.${safe_chunk}.called.vcf.gz
     bcftools stats merged.${safe_chunk}.called.vcf.gz > ${safe_chunk}.stats.txt
     """
 }
@@ -133,10 +169,27 @@ process CONCATENATE_ALL {
     tag "Final Join"
     publishDir "${params.outdir}/04_final_calls/global", mode: 'copy'
     input: path(called_vcfs)
-    output: path "genome_wide_final.vcf.gz"
+    output: 
+        path "genome_wide_final.vcf.gz"
+        path "genome_wide_final.vcf.gz.tbi"
+
     script:
     """
-    bcftools concat -Oz -o genome_wide_final.vcf.gz \$(ls *.vcf.gz | sort -V)
+    # 1. Gera a lista mestre de amostras
+    bcftools query -l \$(ls *.called.vcf.gz | head -n 1) > samples_list.txt
+
+    # 2. Padroniza o header e INDEXA cada arquivo novamente
+    for f in *.called.vcf.gz; do
+        bcftools reheader -s samples_list.txt \$f -o fixed_\$f
+        mv fixed_\$f \$f
+        # O concat precisa do índice para funcionar com a flag -a
+        tabix -p vcf \$f
+    done
+
+    # 3. Concatena agora que todos têm headers idênticos e índices novos
+    bcftools concat -a -Oz -o genome_wide_final.vcf.gz \$(ls *.called.vcf.gz | sort -V)
+
+    # 4. Índice final do arquivo global
     tabix -p vcf genome_wide_final.vcf.gz
     """
 }
@@ -144,7 +197,6 @@ process CONCATENATE_ALL {
 // --- WORKFLOW ---
 
 workflow {
-    // Input setup
     fastq_ch = Channel.fromPath(params.samples).splitCsv(header:true, sep:'\t')
         .map { row -> tuple(row.sample, [file(row.r1), file(row.r2)]) }
 
@@ -152,28 +204,39 @@ workflow {
     ref_indices = Channel.fromPath("${params.ref}.*").collect()
     probes_file = params.probes ? file(params.probes) : []
 
-    // Alignment phase
     TRIM(fastq_ch)
     ALIGN(TRIM.out.paired, ref_file, ref_indices)
-
-    // Step 1: Broad Pileup
     INDIVIDUAL_PILEUP(ALIGN.out.bam, ref_file, ref_indices, probes_file)
 
-    // Step 2: Chunk Generation (with size check)
     def chunks_list = create_chunks("${params.ref}.fai", params.chunk_size)
     ch_chunks = Channel.fromList(chunks_list)
 
-    // Step 3: Scatter VCFs into the defined chunks
-    // Every sample VCF is now split into the sub-regions defined in Step 2
     ch_split_input = INDIVIDUAL_PILEUP.out.vcf.combine(ch_chunks)
     SPLIT_VCF_TO_CHUNK(ch_split_input)
 
-    // Step 4: Gather all samples for each specific chunk
-    vcf_grouped_by_chunk = SPLIT_VCF_TO_CHUNK.out.chunk_vcf.groupTuple(by: 0)	
+    vcf_grouped_by_chunk = SPLIT_VCF_TO_CHUNK.out.chunk_vcf.groupTuple(by: 0)
 
-    // Step 5: Parallel Joint Calling
-    MERGE_AND_CALL_BY_CHUNK(vcf_grouped_by_chunk, ref_file)
+    ch_combined_input = vcf_grouped_by_chunk.map { chunk, vcfs, tbis ->
+        def safe_chunk = chunk.replace(':', '_').replace('-', '_')
+        
+        // Criamos placeholders locais para quando não houver passado
+        def dummy_vcf = file("${workDir}/dummy_${safe_chunk}.vcf")
+        if(!dummy_vcf.exists()) dummy_vcf.text = "" // Arquivo vazio de sinalização
 
-    // Step 6: Final Consolidation
+        def past_vcf = dummy_vcf
+        def past_tbi = dummy_vcf // No NF, podemos passar o mesmo arquivo se não for usado
+
+        if (params.past_calls != "false") {
+            def vcf_path = file("${params.past_calls}/merged.${safe_chunk}.pileup.vcf.gz")
+            if (vcf_path.exists()) {
+                past_vcf = vcf_path
+                past_tbi = file("${vcf_path}.tbi")
+            }
+        }
+        return tuple(chunk, vcfs, tbis, past_vcf, past_tbi)
+    }
+
+    MERGE_AND_CALL_BY_CHUNK(ch_combined_input, ref_file)
+
     CONCATENATE_ALL(MERGE_AND_CALL_BY_CHUNK.out.vcf_called.collect())
 }

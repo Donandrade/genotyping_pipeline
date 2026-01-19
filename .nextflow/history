@@ -1,1 +1,0 @@
-2026-01-17 20:26:56	7m 9s	dreamy_panini	OK	53a20befd92a965e79a1621d984508b9	14717917-449e-433d-a5e6-2318852601a3	nextflow run main.nf --samples sample_1_10.tsv --probes probes.bed --past_calls null --chunk_size 10000 -resume -with-report logs/report.html -with-timeline logs/timeline.html

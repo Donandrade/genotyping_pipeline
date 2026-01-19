@@ -34,10 +34,12 @@ echo "========================================================"
 # O Nextflow vai ler 'params.ref' e 'params.samples' do nextflow.config
 
 # Use "--probes false" to run the pileup for the intire chromosome 
+# Use "--past_calls" to set the path for the old pileups
+#    --past_calls 2025_calling/output/04_final_calls/chunks/ \
 nextflow run main.nf \
-    --samples sample_1_10.tsv \
+    --samples samples/sample_2_last20.tsv \
     --probes probes.bed \
-    --past_calls null \
+    --past_calls 2026_calling/output/04_final_calls/chunks/ \
     --chunk_size 10000 \
     -resume \
     -with-report logs/report.html \
