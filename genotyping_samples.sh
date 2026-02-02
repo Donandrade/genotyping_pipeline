@@ -42,6 +42,24 @@ TIMING_SAMPLE_TSV="$REPORT_DIR/timing_samples.tsv"
 [[ -s "$FLAGSTAT_TSV" ]]       || echo -e "sample\ttotal_reads\tmapped_percent\tpaired_in_sequencing\tproperly_paired_percent" > "$FLAGSTAT_TSV"
 [[ -s "$TIMING_SAMPLE_TSV" ]] || echo -e "scope\tid\tstep\tseconds\tstart_epoch\tend_epoch\ttask_id\thost" > "$TIMING_SAMPLE_TSV"
 
+
+# Verifica se o passo foi concluído com sucesso no log de timing
+is_step_done() {
+    local sample_id="$1"
+    local step_name="$2"
+
+    # Se o arquivo não existe, o passo certamente não foi feito
+    [[ -f "$TIMING_SAMPLE_TSV" ]] || return 1
+
+    # Procura pela linha exata: amostra na coluna 2 e step na coluna 3
+    # O uso do \b garante que o match seja exato (ex: evita confundir "sample_1" com "sample_10")
+    if grep -P "sample\t${sample_id}\t${step_name}\t" "$TIMING_SAMPLE_TSV" > /dev/null; then
+        return 0 # Sucesso, passo já realizado
+    else
+        return 1 # Falha, precisa rodar
+    fi
+}
+
 log_timing() {
   local scope="$1" id="$2" step="$3" start_sec="$4" end_sec="$5" outfile="$6"
   local dur=$(( end_sec - start_sec ))
@@ -210,21 +228,94 @@ else
   SRC_STREAM=$(awk -v s="$START_NUM" -v e="$END_NUM" 'NR>=s && NR<=e' "$SAMPLES_TSV")
 fi
 
+# while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
+  # [[ -z "${sample:-}" || -z "${r1:-}" || -z "${r2:-}" ]] && { echo "Malformed TSV line"; exit 1; }
+  # [[ -f "$r1" && -f "$r2" ]] || { echo "Missing files: $r1 / $r2"; exit 2; }
+
+  # echo "[SAMPLES] sample=$sample"
+
+  # t0=$(date +%s); trim_pair "$sample" "$r1" "$r2"; t1=$(date +%s); log_timing "sample" "$sample" "trim_pair" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  # t0=$(date +%s); align_bwa "$sample";                t1=$(date +%s); log_timing "sample" "$sample" "align_bwa" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  
+  # t0=$(date +%s); mark_duplicates "$sample";          t1=$(date +%s); log_timing "sample" "$sample" "mark_duplicates" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  
+  # t0=$(date +%s); qc_bam "$sample";                   t1=$(date +%s); log_timing "sample" "$sample" "qc_bam" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  # t0=$(date +%s); call_variants "$sample";            t1=$(date +%s); log_timing "sample" "$sample" "call_variants" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  # t0=$(date +%s); finalize_sample "$sample";           t1=$(date +%s); log_timing "sample" "$sample" "finalize_sample" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+
+# done <<< "$SRC_STREAM"
+
 while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
   [[ -z "${sample:-}" || -z "${r1:-}" || -z "${r2:-}" ]] && { echo "Malformed TSV line"; exit 1; }
   [[ -f "$r1" && -f "$r2" ]] || { echo "Missing files: $r1 / $r2"; exit 2; }
 
-  echo "[SAMPLES] sample=$sample"
+  # PONTO CRÍTICO: Se a amostra não está no timing log como finalizada, ela entra no processamento.
+  if is_step_done "$sample" "finalize_sample"; then
+    echo "[SAMPLES] $sample já finalizada no log de timing. Pulando..."
+    continue
+  fi
 
-  t0=$(date +%s); trim_pair "$sample" "$r1" "$r2"; t1=$(date +%s); log_timing "sample" "$sample" "trim_pair" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  t0=$(date +%s); align_bwa "$sample";                t1=$(date +%s); log_timing "sample" "$sample" "align_bwa" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  
-  t0=$(date +%s); mark_duplicates "$sample";          t1=$(date +%s); log_timing "sample" "$sample" "mark_duplicates" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  
-  t0=$(date +%s); qc_bam "$sample";                   t1=$(date +%s); log_timing "sample" "$sample" "qc_bam" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  t0=$(date +%s); call_variants "$sample";            t1=$(date +%s); log_timing "sample" "$sample" "call_variants" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  t0=$(date +%s); finalize_sample "$sample";           t1=$(date +%s); log_timing "sample" "$sample" "finalize_sample" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  echo "[SAMPLES] Processando amostra: $sample"
+
+  # Etapa 1: TRIM
+  if is_step_done "$sample" "trim_pair"; then
+    echo "  > SKIP: trim_pair (já registrado)"
+  else
+    t0=$(date +%s); trim_pair "$sample" "$r1" "$r2"; t1=$(date +%s)
+    log_timing "sample" "$sample" "trim_pair" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  fi
+
+  # Etapa 2: ALIGN
+  if is_step_done "$sample" "align_bwa"; then
+    echo "  > SKIP: align_bwa (já registrado)"
+  else
+    t0=$(date +%s); align_bwa "$sample"; t1=$(date +%s)
+    log_timing "sample" "$sample" "align_bwa" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  fi
+
+  # Etapa 3: MARK DUP
+  if is_step_done "$sample" "mark_duplicates"; then
+    echo "  > SKIP: mark_duplicates (já registrado)"
+  else
+    t0=$(date +%s); mark_duplicates "$sample"; t1=$(date +%s)
+    log_timing "sample" "$sample" "mark_duplicates" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  fi
+
+  # Etapa 4: QC
+  if is_step_done "$sample" "qc_bam"; then
+    echo "  > SKIP: qc_bam (já registrado)"
+  else
+    t0=$(date +%s); qc_bam "$sample"; t1=$(date +%s)
+    log_timing "sample" "$sample" "qc_bam" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  fi
+
+  # Etapa 5: CALL VARIANTS
+  if is_step_done "$sample" "call_variants"; then
+    echo "  > SKIP: call_variants (já registrado)"
+  else
+    t0=$(date +%s); call_variants "$sample"; t1=$(date +%s)
+    log_timing "sample" "$sample" "call_variants" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  fi
+
+  # Etapa 6: FINALIZE (O selo de conclusão)
+  t0=$(date +%s); finalize_sample "$sample"; t1=$(date +%s)
+  log_timing "sample" "$sample" "finalize_sample" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
 
 done <<< "$SRC_STREAM"
+
+# ===== Gerar lista de amostras finalizadas com sucesso =====
+SUCCESS_LIST="$REPORT_DIR/samples_finished_success.txt"
+
+echo "[SAMPLES] Atualizando lista de amostras finalizadas em $SUCCESS_LIST"
+
+# Extrai a coluna 2 (ID da amostra) apenas das linhas que possuem 'finalize_sample'
+# O sort -u garante que não existam duplicatas se o script rodar várias vezes
+if [[ -f "$TIMING_SAMPLE_TSV" ]]; then
+    awk -F'\t' '$3=="finalize_sample" {print $2}' "$TIMING_SAMPLE_TSV" | sort -u > "$SUCCESS_LIST"
+    echo "[SAMPLES] Total de amostras processadas com sucesso: $(wc -l < "$SUCCESS_LIST")"
+else
+    echo "[SAMPLES] Aviso: Log de timing não encontrado para gerar lista de sucesso."
+fi
+
 
 echo "[SAMPLES] Done."
