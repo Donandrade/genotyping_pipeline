@@ -3,3 +3,13 @@ out*
 old_pileups
 reports
 logs
+all_samples.id
+finalized.id
+mv.sbach
+old_pileups
+reference
+reports
+samples_to_complete.tsv
+slurm-24006360.out
+slurm-24006560.out
+tmp

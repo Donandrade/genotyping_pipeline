@@ -15,7 +15,7 @@ NTASKS=$(( (NSAMPLES + PER_TASK - 1) / PER_TASK ))
 
 echo "NSAMPLES=$NSAMPLES PER_TASK=$PER_TASK => NTASKS=$NTASKS"
 
-jid=$(sbatch --array=1-"$NTASKS"%10 genotyping_samples.sh | awk '{print $4}')
+jid=$(sbatch --array=1-"$NTASKS"%45 genotyping_samples.sh | awk '{print $4}')
 echo "Submitted samples job: $jid"
 
 jid2=$(sbatch --dependency=afterok:"$jid" genotyping_merge.sh | awk '{print $4}')

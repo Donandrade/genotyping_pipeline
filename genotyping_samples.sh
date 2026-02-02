@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=geno_samples
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=youremail@ufl.edu
+#SBATCH --mail-user=deandradesilvae@ufl.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=20GB
-#SBATCH --time=10:00:00
+#SBATCH --mem=80GB
+#SBATCH --time=96:00:00
 #SBATCH --output=./logs/geno_samples_%A_%a.txt
 #SBATCH --account=munoz
-#SBATCH --qos=munoz
-# NOTE: --array #Setting in  submit.sh
+#SBATCH --qos=munoz-b
 
 set -euo pipefail
 pwd; hostname; date
@@ -39,8 +38,8 @@ READCOUNT_TSV="$REPORT_DIR/read_counts.tsv"
 FLAGSTAT_TSV="$REPORT_DIR/flagstat_summary.tsv"
 TIMING_SAMPLE_TSV="$REPORT_DIR/timing_samples.tsv"
 
-[[ -s "$READCOUNT_TSV" ]]     || echo -e "sample\tr1_raw\tr2_raw\tr1_trimmed_paired\tr2_trimmed_paired" > "$READCOUNT_TSV"
-[[ -s "$FLAGSTAT_TSV" ]]      || echo -e "sample\ttotal_reads\tmapped_percent\tpaired_in_sequencing\tproperly_paired_percent" > "$FLAGSTAT_TSV"
+[[ -s "$READCOUNT_TSV" ]]      || echo -e "sample\tr1_raw\tr2_raw\tr1_trimmed_paired\tr2_trimmed_paired" > "$READCOUNT_TSV"
+[[ -s "$FLAGSTAT_TSV" ]]       || echo -e "sample\ttotal_reads\tmapped_percent\tpaired_in_sequencing\tproperly_paired_percent" > "$FLAGSTAT_TSV"
 [[ -s "$TIMING_SAMPLE_TSV" ]] || echo -e "scope\tid\tstep\tseconds\tstart_epoch\tend_epoch\ttask_id\thost" > "$TIMING_SAMPLE_TSV"
 
 log_timing() {
@@ -101,10 +100,38 @@ align_bwa () {
   samtools index "$bam_sorted"
 }
 
+mark_duplicates () {
+  local sample="$1"
+  local bam_in="$BAM_TMP_DIR/${sample}.sorted.group.bam"
+  local bam_out="$BAM_TMP_DIR/${sample}.rmdup.bam"
+  local metrics="$REPORT_DIR/${sample}.duplicate.metrics"
+
+  [[ -s "$bam_out" ]] && { echo "SKIP mark_duplicates: $bam_out exists"; return 0; }
+
+  # Calcula memória (80% de 20GB = 16GB)
+  local jvm_mem="16g"
+
+  java -Xmx${jvm_mem} -jar $HPC_PICARD_DIR/picard.jar MarkDuplicates \
+      I="$bam_in" \
+      O="$bam_out" \
+      M="$metrics" \
+      ASSUME_SORT_ORDER=coordinate \
+      REMOVE_DUPLICATES=true \
+      VALIDATION_STRINGENCY=LENIENT \
+      TMP_DIR="$BAM_TMP_DIR"
+
+  echo "MarkDuplicates successful for $sample. Removing intermediate BAM."
+  rm -f "$bam_in" "${bam_in}.bai"
+  samtools index "$bam_out"
+}
+
 qc_bam () {
   local sample="$1"
-  local bam="$BAM_TMP_DIR/${sample}.sorted.group.bam"
+  # Agora usa o arquivo rmdup
+  local bam="$BAM_TMP_DIR/${sample}.rmdup.bam"
   local flagstat_txt="$BAM_TMP_DIR/${sample}.flagstat.txt"
+
+  [[ -s "$bam" ]] || { echo "ERROR: $bam not found for QC"; return 1; }
 
   samtools flagstat "$bam" > "$flagstat_txt"
   samtools stats "$bam"    > "$BAM_TMP_DIR/${sample}.stats.txt"
@@ -122,7 +149,8 @@ qc_bam () {
 
 call_variants () {
   local sample="$1"
-  local bam="$BAM_TMP_DIR/${sample}.sorted.group.bam"
+  # Agora usa o arquivo rmdup
+  local bam="$BAM_TMP_DIR/${sample}.rmdup.bam"
 
   local raw_vcf="$PILEUP_DIR/${sample}.vcf.gz"
   local norm_vcf="$PILEUP_DIR/${sample}_sorted_norm_split.vcf.gz"
@@ -146,11 +174,15 @@ call_variants () {
 
 finalize_sample () {
   local sample="$1"
-  local bam="$BAM_TMP_DIR/${sample}.sorted.group.bam"
-  local bai="$BAM_TMP_DIR/${sample}.sorted.group.bam.bai"
+  # Move os arquivos finais (rmdup) para a pasta definitiva
+  local bam="$BAM_TMP_DIR/${sample}.rmdup.bam"
+  local bai="$BAM_TMP_DIR/${sample}.rmdup.bam.bai"
 
   [[ -s "$bam" ]] && mv -f "$bam" "$BAM_FINAL_DIR/"
   [[ -s "$bai" ]] && mv -f "$bai" "$BAM_FINAL_DIR/"
+  
+  # Opcional: remover o arquivo intermediário (sorted.group.bam) para economizar espaço
+  # rm -f "$BAM_TMP_DIR/${sample}.sorted.group.bam" "$BAM_TMP_DIR/${sample}.sorted.group.bam.bai"
 }
 
 # ===== detect header + slice samples for this task =====
@@ -185,12 +217,14 @@ while IFS=$'\t' read -r sample r1 r2 rgid rglb rgpl rgpu; do
   echo "[SAMPLES] sample=$sample"
 
   t0=$(date +%s); trim_pair "$sample" "$r1" "$r2"; t1=$(date +%s); log_timing "sample" "$sample" "trim_pair" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  t0=$(date +%s); align_bwa "$sample";                 t1=$(date +%s); log_timing "sample" "$sample" "align_bwa" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  t0=$(date +%s); qc_bam "$sample";                    t1=$(date +%s); log_timing "sample" "$sample" "qc_bam" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
-  t0=$(date +%s); call_variants "$sample";             t1=$(date +%s); log_timing "sample" "$sample" "call_variants" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  t0=$(date +%s); align_bwa "$sample";                t1=$(date +%s); log_timing "sample" "$sample" "align_bwa" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  
+  t0=$(date +%s); mark_duplicates "$sample";          t1=$(date +%s); log_timing "sample" "$sample" "mark_duplicates" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  
+  t0=$(date +%s); qc_bam "$sample";                   t1=$(date +%s); log_timing "sample" "$sample" "qc_bam" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
+  t0=$(date +%s); call_variants "$sample";            t1=$(date +%s); log_timing "sample" "$sample" "call_variants" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
   t0=$(date +%s); finalize_sample "$sample";           t1=$(date +%s); log_timing "sample" "$sample" "finalize_sample" "$t0" "$t1" "$TIMING_SAMPLE_TSV"
 
 done <<< "$SRC_STREAM"
 
 echo "[SAMPLES] Done."
-

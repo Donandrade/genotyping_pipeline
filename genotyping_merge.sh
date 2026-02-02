@@ -5,11 +5,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=20GB
-#SBATCH --time=10:00:00
+#SBATCH --mem=80GB
+#SBATCH --time=96:00:00
 #SBATCH --output=./logs/geno_merge_%A_%a.txt
 #SBATCH --account=munoz
-#SBATCH --qos=munoz
+#SBATCH --qos=munoz-b
 #SBATCH --array=1-12
 
 set -euo pipefail
